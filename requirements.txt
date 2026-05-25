@@ -1,0 +1,6 @@
+paramiko>=3.0.0
+rcon>=2.4.9
+aiohttp>=3.9.0
+asyncio>=3.4.3
+json5>=0.9.6
+colorama>=0.4.6

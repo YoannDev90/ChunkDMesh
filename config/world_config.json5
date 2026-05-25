@@ -1,0 +1,10 @@
+{
+  world_name: "",
+  center: [NaN, NaN], // Default to spawn
+  seed: NaN, // Default to random seed
+  radius: 1024, 
+  shape: "square",
+  pattern: "region",
+  max_clients: 8,
+  chunk_format: "sha256",
+}
