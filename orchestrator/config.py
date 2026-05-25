@@ -1,6 +1,7 @@
-import json5
 import json
 from pathlib import Path
+
+import json5
 
 LOGGER_NAME = "CHUNKDMESH"
 
@@ -39,3 +40,4 @@ def load_logging_config(logging_config_path: Path = LOGGING_CONFIG_PATH) -> dict
 
 
 LOGGING_CONFIG = load_logging_config()
+WORLD_GEN_CONFIG = load_config()
