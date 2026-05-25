@@ -19,6 +19,7 @@ ASCII_ART = r"""
 
 CONFIG_PATH = Path("config/world_config.json5")
 LOGGING_CONFIG_PATH = Path("config/logging_config.json")
+DB_PATH = Path("data/chunkdmesh.db")
 
 
 def load_config(config_path: Path = CONFIG_PATH) -> dict:
