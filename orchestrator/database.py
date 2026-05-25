@@ -64,5 +64,28 @@ class Database:
             FOREIGN KEY (assigned_client_id) REFERENCES clients (id)
         );
         """
+        create_tasks_table = """
+        CREATE TABLE IF NOT EXISTS tasks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            x INTEGER NOT NULL,
+            z INTEGER NOT NULL,
+            status TEXT DEFAULT 'PENDING', -- PENDING, IN_PROGRESS, VALIDATED, FAILED
+            UNIQUE(x, z)
+        );
+        """
+        create_results_table = """
+        CREATE TABLE IF NOT EXISTS results (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id INTEGER NOT NULL,
+            client_id INTEGER NOT NULL,
+            signature TEXT NOT NULL, -- Hash du mesh pour vérification
+            data_path TEXT,
+            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (task_id) REFERENCES tasks (id),
+            FOREIGN KEY (client_id) REFERENCES clients (id)
+        );
+        """
         self.execute_query(create_clients_table)
         self.execute_query(create_regions_table)
+        self.execute_query(create_tasks_table)
+        self.execute_query(create_results_table)

@@ -11,6 +11,7 @@ LOGGER = logging.getLogger(config.LOGGER_NAME)
 
 from api import start_api  # noqa: E402
 from database import Database, Type  # noqa: E402
+from world_gen import initialize_world_gen, populate_tasks  # noqa: E402
 
 
 def initialize_database() -> List[Tuple[str]]:
@@ -31,6 +32,23 @@ async def main() -> None:
 
     tables = await asyncio.to_thread(initialize_database)
     LOGGER.info(f"Database initialized (Tables: {tables}).")
+
+    # Gestion de la configuration du monde
+    if config.ACTIVE_CONFIG_PATH.exists():
+        LOGGER.info(
+            f"Chargement de la configuration existante : {config.ACTIVE_CONFIG_PATH}"
+        )
+        world_conf = config.load_config()
+        # On lance l'insertion en tâche de fond (async) sans bloquer le démarrage de l'API
+        asyncio.create_task(
+            populate_tasks(
+                world_conf.get("center", "spawn"),
+                world_conf.get("radius", 0),
+            )
+        )
+    else:
+        LOGGER.info("Aucune configuration trouvée. Lancement de la TUI...")
+        await initialize_world_gen()
 
     host, port, api_task = await start_api()
     LOGGER.info(f"ChunkDMesh API is running on http://{host}:{port}")

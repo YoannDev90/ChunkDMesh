@@ -7,4 +7,6 @@
   pattern: "region",
   max_clients: 8,
   chunk_format: "sha256",
+  verification: true,
+  batch_size: 50,
 }
