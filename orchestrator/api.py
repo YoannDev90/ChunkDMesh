@@ -4,7 +4,7 @@ import psutil
 import asyncio
 import logging
 
-from database import Database
+from database import Database, Type
 import config
 
 # Désactiver les logs et la bannière Flask/Werkzeug pour plus de clarté
@@ -81,9 +81,11 @@ def get_status():
     ip = flask.request.remote_addr
     db = Database()
     db.connect()
-    connected_clients = db.execute_query("SELECT ip_address FROM clients")
+    connected_clients = db.execute_query(
+        "SELECT ip_address FROM clients", type=Type.LIST
+    )
     db.close()
-    msg = "Connecté" if (ip,) in connected_clients else "Non connecté"
+    msg = "Connecté" if ip in connected_clients else "Non connecté"
     return flask.jsonify({"status": "API en cours d'exécution", "message": msg})
 
 
