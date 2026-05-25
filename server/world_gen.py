@@ -7,24 +7,25 @@ import aiosqlite
 from typing import Union, Tuple
 from pathlib import Path
 
-# Ajouter le répertoire racine au sys.path pour permettre les imports du package 'objects'
+# Ajouter le répertoire racine au sys.path pour permettre les imports du package 'shared'
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from InquirerPy import inquirer
 from InquirerPy.validator import NumberValidator
-from objects.shapes import ShapeType
-from objects.patterns import PatternType
+from shared.shapes import ShapeType
+from shared.patterns import PatternType
 import config
 
 
 def save_world_config(data: dict):
     """Sauvegarde la configuration dans data/world_settings.json."""
-    save_path = Path("data/world_settings.json")
+    save_path = config.ACTIVE_CONFIG_PATH
     save_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # On charge le template pour garder les champs par défaut non modifiés par la TUI
+    # On charge la configuration actuelle
     try:
-        current_config = config.load_config()
+        conf_obj = config.load_config()
+        current_config = conf_obj.model_dump()
     except Exception:
         current_config = {}
 
@@ -93,88 +94,88 @@ async def populate_tasks(center, radius):
 async def initialize_world_gen():
     """Initialise les paramètres et les ressources nécessaires pour la génération du monde via une TUI (InquirerPy)."""
 
-    world_name = inquirer.text(
+    world_name = await inquirer.text(
         message="Entrez le nom du monde à générer :",
         default="NewWorld",
         validate=lambda result: len(result) > 0 or "Le nom ne peut pas être vide",
-    ).execute()
+    ).execute_async()
 
-    use_random_seed = inquirer.confirm(
+    use_random_seed = await inquirer.confirm(
         message="Utiliser une graine aléatoire ?", default=True
-    ).execute()
+    ).execute_async()
 
     if use_random_seed:
         seed = random.randint(-999_999_999_999_999, 999_999_999_999_999)
     else:
-        seed_str = inquirer.text(
+        seed_str = await inquirer.text(
             message="Entrez une graine pour la génération :",
             validate=lambda result: (
                 result.strip("-").isdigit() or "La graine doit être un nombre"
             ),
-        ).execute()
+        ).execute_async()
         seed = int(seed_str)
 
-    center_type = inquirer.select(
+    center_type = await inquirer.select(
         message="Type de centre de génération :",
         choices=[
             {"name": "Spawn point", "value": "spawn"},
             {"name": "Coordonnées personnalisées", "value": "custom"},
         ],
         default="spawn",
-    ).execute()
+    ).execute_async()
 
     center: Union[str, Tuple[int, int]]
     if center_type == "custom":
-        center_x = inquirer.text(
+        center_x = await inquirer.text(
             message="Coordonnée X :", validate=NumberValidator()
-        ).execute()
-        center_z = inquirer.text(
+        ).execute_async()
+        center_z = await inquirer.text(
             message="Coordonnée Z :", validate=NumberValidator()
-        ).execute()
+        ).execute_async()
         center = (int(center_x), int(center_z))
     else:
         center = "spawn"
 
-    radius = inquirer.number(
+    radius = await inquirer.number(
         message="Rayon de génération (en chunks) :",
         min_allowed=1,
         max_allowed=1_000_000,
         default=1000,
         validate=NumberValidator(),
-    ).execute()
+    ).execute_async()
 
-    batch_size = inquirer.number(
+    batch_size = await inquirer.number(
         message="Nombre de chunks par paquet (Batch size) :",
         min_allowed=1,
         max_allowed=5000,
         default=50,
         validate=NumberValidator(),
-    ).execute()
+    ).execute_async()
 
-    additional_settings = inquirer.confirm(
+    additional_settings = await inquirer.confirm(
         message="Configurer des paramètres additionnels (Shape, Pattern) ?",
         default=False,
-    ).execute()
+    ).execute_async()
 
     shape = None
     pattern = None
 
     if additional_settings:
-        shape = inquirer.select(
+        shape = await inquirer.select(
             message="Sélectionnez la forme (Shape) :",
             choices=[
                 {"name": s.name.capitalize(), "value": s.value} for s in ShapeType
             ],
             default=ShapeType.SQUARE.value,
-        ).execute()
+        ).execute_async()
 
-        pattern = inquirer.select(
+        pattern = await inquirer.select(
             message="Sélectionnez le motif (Pattern) :",
             choices=[
                 {"name": p.name.capitalize(), "value": p.value} for p in PatternType
             ],
             default=PatternType.SPIRAL.value,
-        ).execute()
+        ).execute_async()
 
     print("\n" + "=" * 50)
     print("Résumé de la configuration :")
@@ -188,9 +189,9 @@ async def initialize_world_gen():
         print(f" - Pattern  : {pattern}")
     print("=" * 50 + "\n")
 
-    if inquirer.confirm(
+    if await inquirer.confirm(
         message="Lancer la génération du monde ?", default=True
-    ).execute():
+    ).execute_async():
         # Préparation des données pour la config
         config_data = {
             "world_name": world_name,
@@ -218,6 +219,11 @@ if __name__ == "__main__":
     if config.ACTIVE_CONFIG_PATH.exists():
         print(f"Configuration existante trouvée : {config.ACTIVE_CONFIG_PATH}")
         conf = config.load_config()
-        asyncio.run(populate_tasks(conf.get("center", "spawn"), conf.get("radius", 0)))
+        asyncio.run(
+            populate_tasks(
+                conf.center if hasattr(conf, "center") else "spawn",
+                conf.radius if hasattr(conf, "radius") else 0,
+            )
+        )
     else:
         asyncio.run(initialize_world_gen())

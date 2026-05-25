@@ -1,5 +1,7 @@
-data/
-
+server/data/
+*.zip
+*.tar.gz
+client_data/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
