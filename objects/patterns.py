@@ -2,7 +2,7 @@
 https://github.com/pop4959/Chunky/wiki/Patterns
 """
 
-from typing import Enum
+from enum import Enum
 
 class PatternType(Enum):
     REGIONS = "regions"

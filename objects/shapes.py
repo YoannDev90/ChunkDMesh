@@ -2,7 +2,7 @@
 https://github.com/pop4959/Chunky/wiki/Shapes
 """
 
-from typing import Enum
+from enum import Enum
 
 
 class ShapeType(Enum):

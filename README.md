@@ -1,5 +1,6 @@
-```
+# CHUNK-D-MESH
 
+```text
                                                                                                          
    _|_|_|  _|    _|  _|    _|  _|      _|  _|    _|  _|_|_|    _|      _|  _|_|_|_|    _|_|_|  _|    _|  
  _|        _|    _|  _|    _|  _|_|    _|  _|  _|    _|    _|  _|_|  _|_|  _|        _|        _|    _|  
@@ -8,8 +9,6 @@
    _|_|_|  _|    _|    _|_|    _|      _|  _|    _|  _|_|_|    _|      _|  _|_|_|_|  _|_|_|    _|    _|  
                                                                                                 
 ```
-
-# ChunkDMesh
 
 A minimal, opinionated toolkit for distributed chunk-based mesh exchange (P2P).
 
@@ -28,16 +27,9 @@ Petit projet visant à expérimenter la distribution et l'allocation de "chunks"
 
 ## Installation rapide
 
-1. Créez et activez un environnement virtuel :
-
 ```sh
   python -m venv .venv
   source .venv/bin/activate
-```
-
-2. Installez les dépendances :
-
-```sh
   pip install -r requirements.txt
 ```
 
