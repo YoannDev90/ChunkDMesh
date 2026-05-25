@@ -1,18 +1,17 @@
 # CHUNK-D-MESH
 
 ```text
-                                                                                                         
-   _|_|_|  _|    _|  _|    _|  _|      _|  _|    _|  _|_|_|    _|      _|  _|_|_|_|    _|_|_|  _|    _|  
- _|        _|    _|  _|    _|  _|_|    _|  _|  _|    _|    _|  _|_|  _|_|  _|        _|        _|    _|  
- _|        _|_|_|_|  _|    _|  _|  _|  _|  _|_|      _|    _|  _|  _|  _|  _|_|_|      _|_|    _|_|_|_|  
- _|        _|    _|  _|    _|  _|    _|_|  _|  _|    _|    _|  _|      _|  _|              _|  _|    _|  
-   _|_|_|  _|    _|    _|_|    _|      _|  _|    _|  _|_|_|    _|      _|  _|_|_|_|  _|_|_|    _|    _|  
-                                                                                                
+ _____  _   _ _   _ _   _  _   __     ______       ___  ___ _____ _____ _   _ 
+/  __ \| | | | | | | \ | || | / /     |  _  \      |  \/  ||  ___/  ___| | | |
+| /  \/| |_| | | | |  \| || |/ /______| | | |______| .  . || |__ \ `--.| |_| |
+| |    |  _  | | | | . ` ||    \______| | | |______| |\/| ||  __| `--. \  _  |
+| \__/\| | | | |_| | |\  || |\  \     | |/ /       | |  | || |___/\__/ / | | |
+ \____/\_| |_/\___/\_| \_/\_| \_/     |___/        \_|  |_/\____/\____/\_| |_/
 ```
 
-A minimal, opinionated toolkit for distributed chunk-based mesh exchange (P2P).
-
 Petit projet visant à expérimenter la distribution et l'allocation de "chunks" dans un réseau maillé.
+
+Le projet est en grande partie basé sur le serveur officiel téléchargeable depuis Mojang, et sur le mod/plugin Chunky, qui a une excellente gestion du threading.
 
 ## Caractéristiques
 

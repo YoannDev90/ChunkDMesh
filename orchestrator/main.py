@@ -29,15 +29,12 @@ async def main() -> None:
     print(config.ASCII_ART)
     LOGGER.info("ChunkDMesh orchestrator is ready.")
 
-    # 1. On initialise la base de données de manière asynchrone (via thread)
     tables = await asyncio.to_thread(initialize_database)
     LOGGER.info(f"Database initialized (Tables: {tables}).")
 
-    # 2. On lance le serveur API
     host, port, api_task = await start_api()
     LOGGER.info(f"ChunkDMesh API is running on http://{host}:{port}")
 
-    # 3. On attend le serveur
     try:
         await api_task
     except asyncio.CancelledError:
