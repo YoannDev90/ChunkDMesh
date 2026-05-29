@@ -36,6 +36,12 @@ Le projet adopte une architecture Client-Serveur via une API REST/WebSocket.
   - **Pilotage RCON** : Une fois le serveur Minecraft lancé, communique via le protocole RCON pour envoyer les commandes de génération (`chunky start`, `chunky pause`, etc.).
   - Hashage et envoi des données générées au serveur.
 
+### 3.3 Distribution Hybride P2P (Optionnelle)
+
+Pour soulager le serveur central lors de sessions avec de nombreux clients :
+- **Protocole BitTorrent** : Le serveur peut générer un `.torrent` pour le `mods.zip`. Les clients deviennent des "seeders" après avoir téléchargé l'archive, réduisant drastiquement l'egress du serveur.
+- **Peer-to-Peer Data Transfer** : Les fichiers de région `.mca` validés peuvent être partagés directement entre les clients pour les phases de double-vérification.
+
 ---
 
 ## 4. Spécifications Fonctionnelles
@@ -72,17 +78,13 @@ Le projet adopte une architecture Client-Serveur via une API REST/WebSocket.
 - **Comparaison de Hashes :** Le serveur compare les hashes des fichiers `.mca` produits. En cas de divergence, une tierce génération est lancée.
 - **Protection contre la triche :** Analyse sommaire du contenu des chunks (ex: présence de bedrock, structure globale) pour éviter l'envoi de fichiers vides.
 
-### 4.4 Assemblage du Monde (Anvil Merge)
+### 4.4 Assemblage du Monde (MCA Replacement)
 
-Le format Anvil (.mca) stocke 1024 chunks (32x32). La fusion est le processus le plus complexe :
-
-- **Extraction sélective** : Le serveur reçoit un fichier `.mca` partiel du client (contenant uniquement les chunks du batch).
-- **Injection atomique** : Pour chaque chunk reçu, le serveur doit :
-    1. Ouvrir le fichier de région cible existant.
-    2. Vérifier si le chunk y est déjà présent et validé.
-    3. Injecter les données NBT du chunk.
-    4. Recalculer les offsets et les timestamps du fichier `.mca`.
-- **Mécanisme de sécurité** : Utilisation d'un fichier `.mca.tmp` pour éviter la corruption en cas de crash lors de l'écriture.
+L'unité de base étant la région (32x32 chunks), la fusion est simplifiée :
+- **Remplacement de Fichier** : Le serveur reçoit un fichier `.mca` complet.
+- **Vérification de l'Intégrité** : Le serveur vérifie que le fichier est un format Anvil valide et que son nom correspond à la région attendue (`r.X.Z.mca`).
+- **Stockage Final** : Le fichier est déplacé directement dans le dossier `world/region/` final.
+- **Export** : Une fois la zone cible couverte, génération d'un fichier `.tar.gz` ou `.zip` prêt à l'emploi.
 
 ### 4.5 Registre Central & Découverte
 
@@ -176,9 +178,44 @@ Selon le type de déploiement, le serveur supporte trois modes de stockage pour 
 
 ---
 
-## 7. Roadmap (Phasage)
+## 7. Roadmap Détaillée (MVP à V1)
 
-1. **V1 (Core) :** Distribution de tâches simple et renvoi de fichiers complets.
-2. **V2 (Fiabilité) :** Système de Manifeste + Hashage + WebSockets.
-3. **V3 (Optimisation) :** Fusion intelligente au niveau des fichiers de région (`.mca`).
-4. **V4 (Écosystème) :** Interface Web Admin + Client avec UI Desktop.
+### Phase 1 : Fondations du Serveur (Le Cerveau)
+
+- [ ] **1.1 Structure API** : Initialisation FastAPI + Système de logs.
+- [ ] **1.2 Base de Données** : Schéma SQLite (Clients, Worlds, Batches, Validations).
+- [ ] **1.3 Dashboard Minimal** : Route Jinja2 affichant la liste des clients et l'état global.
+- [ ] **1.4 Auth & Registration** : Endpoint `/auth/register` (Gestion Whitelist/Mode Public).
+- [ ] **1.5 Gestionnaire de Manifeste** : Logique de création du JSON de session à partir des fichiers locaux.
+
+### Phase 2 : Communication & Assets
+
+- [ ] **2.1 File Server** : Endpoint de streaming pour le `mods.zip` et les JARs.
+- [ ] **2.2 Logique de Batching** : Algorithme de découpe d'une zone (ex: -5000 à +5000) en régions `r.X.Z.mca`.
+- [ ] **2.3 Attribution des tâches** : Endpoint `/tasks/next` gérant les timeouts et les réattributions.
+
+### Phase 3 : Le Client "Worker" de base
+
+- [ ] **3.1 Détecteur Java** : Script de recherche JRE locale + download fallback OpenJDK.
+- [ ] **3.2 Asset Manager** : Téléchargement, vérification de hash et extraction du package du serveur.
+- [ ] **3.3 Instance Runner** : Lancement du serveur Minecraft en mode Headless (Capture stdout/stderr).
+- [ ] **3.4 RCON Client** : Connexion et envoi des commandes de base à Chunky.
+
+### Phase 4 : Retour de Force & Validation
+
+- [ ] **4.1 Upload sérialisé** : Système d'envoi des fichiers `.mca` compressés en Zstd.
+- [ ] **4.2 Vérificateur de Hash** : Validation côté serveur des fichiers reçus vs les hashes déclarés par le client.
+- [ ] **4.3 Système de Redondance** : Logique de comparaison si deux clients génèrent la même région.
+
+### Phase 5 : Fusion & Finalisation
+
+- [ ] **5.1 Region Assembler** : Déplacement et organisation finale des fichiers `.mca` dans le dossier world.
+- [ ] **5.2 Export Manager** : Création automatique de l'archive `.tar.gz` une fois la zone complétée.
+- [ ] **5.3 Interface Heatmap** : Vue visuelle (Canvas ou Grille HTMX) de la progression des régions sur le Dashboard.
+
+### Phase 6 : Optimisations & Cloud
+
+- [ ] **6.1 Benchmark** : Routine de test de vitesse client lors de la première connexion.
+- [ ] **6.2 S3/R2 Driver** : Implémentation de l'upload automatique des régions vers un stockage objet.
+- [ ] **6.3 Distribution P2P** : Intégration de `libtorrent` pour le partage du `mods.zip` et des données de monde.
+- [ ] **6.4 Auto-Update** : Système de mise à jour du client via le serveur.
