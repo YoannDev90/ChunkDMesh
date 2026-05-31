@@ -1,12 +1,12 @@
 {
-  world_name: "",
-  center: [NaN, NaN], // Default to spawn
+  world_name: "MyWorld", // Name of the world to render
+  dimension: "overworld", // Could be "overworld", "nether", "end", or a custom dimension name
+  center: [NaN, NaN], // Default to spawn (not 0,0)
   seed: NaN, // Default to random seed
-  radius: 1024, 
-  shape: "square",
-  pattern: "region",
-  max_clients: 8,
-  chunk_format: "sha256",
-  verification: true,
-  batch_size: 50,
+  radius: 1024, // Render radius in chunks (16 blocks each)
+  shape: "square", // Chunky default
+  pattern: "regions", // Chunky default
+  max_clients: NaN, // No limit 
+  chunk_format: "sha256", // Could be "sha256", "zlib", "raw"
+  verification: false,  // Whether to verify chunk integrity on upload
 }

@@ -101,6 +101,5 @@ async def init_db() -> None:
 
 
 if __name__ == "__main__":
-	# convenience: create DB when run directly
 	asyncio.run(init_db())
 
