@@ -13,12 +13,14 @@
 """
 
 import datetime
+import hashlib
 import logging
 import os
 from pathlib import Path
 from typing import Dict, Generator, Optional
 
 import uvicorn
+import zstd
 from config import ChunkyPattern, ChunkyShape, Config
 from db import Batch, Client, Validation, World, get_db_session
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
@@ -61,12 +63,20 @@ class LoginRequest(BaseModel):
     ram_gb: int
 
 
+class SubmitTasksRequest(BaseModel):
+    batch_id: int
+    chunk_hashes: Dict[str, str]  # {"chunk_x_z": "sha256hash"}
+
+
+class UploadChunksRequest(BaseModel):
+    chunk_data: bytes  # Zstd-compressed binary data
+
+
 @app.get("/")
 async def root(request: Request):
     return JSONResponse(
         {
             "project": "ChunkDMesh",
-            "status": "orchestrator",
             "message": "Welcome to ChunkDMesh API",
         }
     )
@@ -130,17 +140,37 @@ async def get_config(request: Request):
 
 @app.get("/tasks/batch")
 async def get_batch(request: Request):
-    pass
+    batch = {
+        "batch_id": 123,
+        "region_x": 0,
+        "region_z": 0,
+        "world_name": "ExampleWorld",
+        "dimension": "overworld",
+    }
+    return JSONResponse(batch)
 
 
 @app.post("/tasks/submit")
-async def submit_tasks(request: Request):
-    pass
+async def submit_tasks(submit_tasks_request: SubmitTasksRequest, request: Request):
+    print(
+        f"Received submission for batch {submit_tasks_request.batch_id} with hashes: {submit_tasks_request.chunk_hashes}"
+    )
+    return JSONResponse(
+        {"status": "received", "batch_id": submit_tasks_request.batch_id}
+    )
 
 
 @app.put("/tasks/upload/{batch_id}")
-async def upload_chunks(batch_id: str, request: Request):
-    pass
+async def upload_chunks(
+    batch_id: str, upload_chunks_request: UploadChunksRequest, request: Request
+):
+    chunk_data = upload_chunks_request.chunk_data
+    # decompress chunk_data with Zstd and save to disk (for testing)
+    decompressed_data = zstd.ZSTD_uncompress(chunk_data)
+    sha256_hash = hashlib.sha256(decompressed_data).hexdigest()
+    print(f"Decompressed chunk data for batch {batch_id}, SHA-256: {sha256_hash}")
+    print(f"Received chunk data for batch {batch_id}, size: {len(chunk_data)} bytes")
+    return JSONResponse({"status": "received", "batch_id": batch_id})
 
 
 @app.get("/admin/heatmap")

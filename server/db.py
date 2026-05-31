@@ -12,15 +12,11 @@ import asyncio
 from datetime import datetime
 from typing import List, Optional
 
-from sqlalchemy import BIGINT, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import (BIGINT, DateTime, ForeignKey, Integer, String, Text,
+                        func)
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlalchemy.orm import (
-    Mapped,
-    declarative_base,
-    mapped_column,
-    relationship,
-    sessionmaker,
-)
+from sqlalchemy.orm import (Mapped, declarative_base, mapped_column,
+                            relationship, sessionmaker)
 
 DATABASE_URL = "sqlite+aiosqlite:///./data/chunkdmesh.db"
 
