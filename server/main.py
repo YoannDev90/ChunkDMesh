@@ -14,7 +14,7 @@ avoids that issue.
 
 import uvicorn
 
-from server.api import app
+from api import app
 
 
 def main() -> None:

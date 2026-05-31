@@ -55,12 +55,8 @@ async def get_mods():
 
 @app.get("/assets/config.json")
 async def get_config():
-	config = {
-		"world": "example_world",
-		"render_distance": 8,
-		"chunk_size": 16,
-		"batch_size": 64,
-	}
+	from config import Config
+	config = Config().__dict__()
 	return JSONResponse(config)
 
 @app.get("/tasks/batch")
