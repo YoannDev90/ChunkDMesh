@@ -13,13 +13,20 @@
 """
 
 from fastapi import FastAPI, Depends, HTTPException, Header
-from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi.responses import StreamingResponse, JSONResponse, FileResponse
 from typing import Optional, Dict, Generator
 import os
+from pathlib import Path
 from pydantic import BaseModel
 from jwt import encode, decode, PyJWTError
+import logging
+import uvicorn
 
-app = FastAPI(title="ChunkDMesh Orchestrator", version="0.1.0")
+app = FastAPI(title="ChunkDMesh Orchestrator", version="0.1.0", favicon="config/favicon.ico")
+FAVICON_PATH = Path(__file__).resolve().parent / "config" / "favicon.ico"
+
+def run_api_async():
+	uvicorn.run(app, host="0.0.0.0", port=8000, reload=False)
 
 def file_stream_generator(path: str, chunk_size: int = 1024 * 64) -> Generator[bytes, None, None]:
     with open(path, "rb") as f:
@@ -40,6 +47,10 @@ async def root():
 @app.get("/health")
 async def health():
 	return JSONResponse({"status": "ok"})
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+	return FileResponse(FAVICON_PATH, media_type="image/x-icon")
 
 @app.post("/auth/login")
 async def login(login_request: LoginRequest):

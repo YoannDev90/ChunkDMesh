@@ -12,13 +12,12 @@ when Uvicorn attempted to reload by module name; importing the app object
 avoids that issue.
 """
 
-import uvicorn
-
-from api import app
+import asyncio
+from api import run_api_async
 
 
 def main() -> None:
-    uvicorn.run(app, host="0.0.0.0", port=8000, reload=False)
+    asyncio.run(run_api_async())
 
 
 if __name__ == "__main__":
