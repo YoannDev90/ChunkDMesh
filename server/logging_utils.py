@@ -1,12 +1,14 @@
-import logging
 import json
+import logging
 
 from colorama import Fore, Style
+
 
 def load_logging_config(path="config/logging_config.json"):
     with open(path, "r") as f:
         config = json.load(f)
     return config
+
 
 class ColoredFormatter(logging.Formatter):
     """Colorise les logs console selon leur niveau."""
@@ -28,6 +30,7 @@ class ColoredFormatter(logging.Formatter):
             return super().format(record)
         finally:
             record.levelname = levelname
+
 
 def setup_logging():
     logging_config = load_logging_config()

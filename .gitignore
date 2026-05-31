@@ -2,6 +2,7 @@ data/
 *.zip
 *.tar.gz
 client_data/
+*.pem
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
