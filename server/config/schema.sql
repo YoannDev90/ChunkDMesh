@@ -1,0 +1,41 @@
+PRAGMA foreign_keys = ON;
+
+CREATE TABLE IF NOT EXISTS clients (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    token TEXT UNIQUE,
+    ip TEXT,
+    reput INTEGER DEFAULT 0,
+    cpu_cores INTEGER,
+    ram_gb INTEGER,
+    last_seen DATETIME
+);
+
+CREATE TABLE IF NOT EXISTS worlds (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    seed BIGINT NOT NULL,
+    mc_version TEXT,
+    loader_type TEXT,
+    status TEXT DEFAULT 'pending'
+);
+
+CREATE TABLE IF NOT EXISTS batches (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    world_id INTEGER NOT NULL REFERENCES worlds(id) ON DELETE CASCADE,
+    region_x INTEGER NOT NULL,
+    region_z INTEGER NOT NULL,
+    status TEXT DEFAULT 'pending',
+    assigned_to INTEGER REFERENCES clients(id) ON DELETE SET NULL,
+    retry_count INTEGER DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS validations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    batch_id INTEGER NOT NULL REFERENCES batches(id) ON DELETE CASCADE,
+    client_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+    file_hash TEXT NOT NULL,
+    storage_path TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
