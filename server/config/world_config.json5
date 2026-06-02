@@ -1,4 +1,8 @@
 {
+  minecraft_version: NaN, // Minecraft version to render
+  minecraft_loader: NaN, // Minecraft mod loader, e.g., "fabric", "forge", "quilt"
+  loader_version: NaN, // Version of the mod loader
+  chunky_version: NaN, // Version of Chunky to use for rendering
   world_name: "MyWorld", // Name of the world to render
   dimension: "overworld", // Could be "overworld", "nether", "end", or a custom dimension name
   center: [NaN, NaN], // Default to spawn (not 0,0)

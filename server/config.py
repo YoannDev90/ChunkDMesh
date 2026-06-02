@@ -1,8 +1,13 @@
 import math
 import os
 import random
+import asyncio
+from typing import Optional
 
 import json5
+
+from mc_utils import get_loader_version_sync, get_minecraft_versions_sync, get_chunky_version
+
 
 
 class ChunkyShape:
@@ -36,11 +41,20 @@ class ChunkyDimension:
     END = "end"
     CUSTOM = "custom"
 
+class SupportedLoaders:
+    FABRIC = "fabric"
+    FORGE = "forge"
+    QUILT = "quilt"
+    NEOFORGE = "neoforge"
 
 class Config:
     def __init__(self, path="data/world_config.json5"):
         self.path = path
         self.config = load_config(path)
+        self.minecraft_version: str = self.config.get("minecraft_version") or None
+        self.minecraft_loader: str = self.config.get("minecraft_loader") or None
+        self.loader_version: str = self.config.get("loader_version") or None
+        self.chunky_version: str = self.config.get("chunky_version") or None
         self.world_name: str = self.config.get("world_name") or None
         self.dimension: str = self.config.get("dimension") or "overworld"
         self.center: list = self.config.get("center") or [float("nan"), float("nan")]
@@ -53,6 +67,16 @@ class Config:
         self.verification: bool = self.config.get("verification") or False
         self.use_spawn_as_center: bool = False
 
+        if self.minecraft_loader not in [
+            l for l in vars(SupportedLoaders).values() if isinstance(l, str)
+        ]:
+            raise ValueError(f"Invalid Minecraft loader: {self.minecraft_loader}")
+        if not self.minecraft_version in get_minecraft_versions_sync():
+            raise ValueError(f"Invalid Minecraft version: {self.minecraft_version}")
+        if not self.loader_version in get_loader_version_sync(self.minecraft_loader, self.minecraft_version):
+            raise ValueError(f"Invalid loader version: {self.loader_version} for loader {self.minecraft_loader} and Minecraft version {self.minecraft_version}")
+        if not get_chunky_version(self.chunky_version, self.minecraft_loader, self.minecraft_version):
+            raise ValueError(f"Invalid Chunky version: {self.chunky_version} for loader {self.minecraft_loader} and Minecraft version {self.minecraft_version}")
         if math.isnan(self.center[0]) or math.isnan(self.center[1]):
             self.center = [0, 0]
             self.use_spawn_as_center = True
@@ -73,6 +97,10 @@ class Config:
 
     def __dict__(self):
         return {
+            "minecraft_version": self.minecraft_version,
+            "minecraft_loader": self.minecraft_loader,
+            "loader_version": self.loader_version,
+            "chunky_version": self.chunky_version,
             "world_name": self.world_name,
             "dimension": self.dimension,
             "center": self.center,
