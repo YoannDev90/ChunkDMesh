@@ -9,7 +9,7 @@
       },
       simple: {
         class: "logging.ColoredFormatter",
-        format: "%(levelname)s - %(message)s",
+        format: "%(asctime)s - %(levelname)s - %(message)s",
       },
     },
     handlers: {
@@ -38,6 +38,6 @@
   // YOU CAN EDIT THIS PART TO ADD CUSTOM CONFIGS FOR YOUR LOGGING SETUP.
   global_logging_config: {
     logs_locale_lang: "fr", // Default language for logs, should match a key in the translations object.
-    logs_locale_format: "en_US", // Format for locale-specific data in logs (e.g., dates, numbers).
+    logs_locale_format: "fr", // Format for locale-specific data in logs (e.g., dates, numbers).
   },
 }
