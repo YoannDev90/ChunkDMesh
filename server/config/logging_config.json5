@@ -1,0 +1,43 @@
+// Logging config for Python's logging module, using JSON5 format for comments.
+// DO NOT EDIT THIS PART UNLESS YOU KNOW WHAT YOU ARE DOING.
+{
+  logging_lib_config: {
+    version: 1,
+    formatters: {
+      detailed: {
+        format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s - [%(filename)s:%(lineno)d]",
+      },
+      simple: {
+        class: "logging.ColoredFormatter",
+        format: "%(levelname)s - %(message)s",
+      },
+    },
+    handlers: {
+      console: {
+        class: "logging.StreamHandler",
+        level: "INFO",
+        formatter: "simple",
+        stream: "ext://sys.stdout",
+      },
+      file: {
+        class: "logging.FileHandler",
+        level: "DEBUG",
+        formatter: "detailed",
+        filename: "app.log",
+        mode: "a",
+      },
+    },
+    loggers: {
+      "": {
+        handlers: ["console", "file"],
+        level: "DEBUG",
+        propagate: true,
+      },
+    },
+  },
+  // YOU CAN EDIT THIS PART TO ADD CUSTOM CONFIGS FOR YOUR LOGGING SETUP.
+  global_logging_config: {
+    logs_locale_lang: "fr", // Default language for logs, should match a key in the translations object.
+    logs_locale_format: "en_US", // Format for locale-specific data in logs (e.g., dates, numbers).
+  },
+}

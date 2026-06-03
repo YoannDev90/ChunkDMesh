@@ -1,0 +1,6 @@
+{
+  de: {
+    hello_world: "Hallo Welt!",
+    sample_log_with_param: "Dies ist eine Protokollnachricht mit einem Parameter: {param}",
+  },
+}

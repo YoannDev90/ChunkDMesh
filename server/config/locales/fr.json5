@@ -1,0 +1,6 @@
+{
+  fr: {
+    hello_world: "Bonjour le monde !",
+    sample_log_with_param: "Ceci est un message de journal avec un param\u00e8tre: {param}",
+  },
+}

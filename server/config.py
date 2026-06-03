@@ -1,15 +1,11 @@
+import asyncio
 import math
 import random
-import asyncio
 from typing import Optional
 
 import json5
-
-from mc_utils import (
-    get_loader_version,
-    get_minecraft_versions,
-    get_chunky_version,
-)
+from mc_utils import (get_chunky_version, get_loader_version,
+                      get_minecraft_versions)
 
 
 class ChunkyShape:
@@ -80,7 +76,12 @@ class Config:
             json5.dump(self.to_dict(), f, indent=4)
 
     def _normalize_defaults(self) -> None:
-        if isinstance(self.center[0], int) or isinstance(self.center[0], float) and isinstance(self.center[1], int) or isinstance(self.center[1], float):
+        if (
+            isinstance(self.center[0], int)
+            or isinstance(self.center[0], float)
+            and isinstance(self.center[1], int)
+            or isinstance(self.center[1], float)
+        ):
             if math.isnan(self.center[0]) or math.isnan(self.center[1]):
                 self.center = [None, None]
                 self.use_spawn_as_center = True
@@ -95,7 +96,9 @@ class Config:
         if math.isnan(self.seed):
             self.seed = random.randint(-(10**18), 10**18)
 
-        valid_dimensions = [d for d in vars(ChunkyDimension).values() if isinstance(d, str)]
+        valid_dimensions = [
+            d for d in vars(ChunkyDimension).values() if isinstance(d, str)
+        ]
         if self.dimension not in valid_dimensions:
             raise ValueError(f"Invalid dimension: {self.dimension}")
 
@@ -103,13 +106,16 @@ class Config:
         if self.shape not in valid_shapes:
             raise ValueError(f"Invalid shape: {self.shape}")
 
-        valid_patterns = [
-            s for s in vars(ChunkyPattern).values() if isinstance(s, str)
-        ]
+        valid_patterns = [s for s in vars(ChunkyPattern).values() if isinstance(s, str)]
         if self.pattern not in valid_patterns:
             raise ValueError(f"Invalid pattern: {self.pattern}")
 
-        if self.max_clients is None or self.max_clients > 100 or self.max_clients <= 0 or not isinstance(self.max_clients, int):
+        if (
+            self.max_clients is None
+            or self.max_clients > 100
+            or self.max_clients <= 0
+            or not isinstance(self.max_clients, int)
+        ):
             self.max_clients = 100
 
         self.save_config()
@@ -131,14 +137,20 @@ class Config:
                 f"Available: {minecraft_versions[:3]}..."
             )
 
-        loader_versions = await get_loader_version(loader=self.minecraft_loader, minecraft_version=self.minecraft_version)
+        loader_versions = await get_loader_version(
+            loader=self.minecraft_loader, minecraft_version=self.minecraft_version
+        )
         if self.loader_version not in loader_versions:
             raise ValueError(
                 f"Invalid loader version: {self.loader_version} for loader "
                 f"{self.minecraft_loader} and Minecraft version {self.minecraft_version}"
             )
 
-        chunky_id = await get_chunky_version(version=self.chunky_version, loader=self.minecraft_loader, minecraft_version=self.minecraft_version)
+        chunky_id = await get_chunky_version(
+            version=self.chunky_version,
+            loader=self.minecraft_loader,
+            minecraft_version=self.minecraft_version,
+        )
         if not chunky_id:
             raise ValueError(
                 f"Invalid Chunky version: {self.chunky_version} for loader "
@@ -171,10 +183,12 @@ class Config:
             "use_spawn_as_center": self.use_spawn_as_center,
         }
 
+
 def load_config(path: str = "data/world_config.json5") -> dict:
     with open(path, "r") as f:
         config = json5.load(f)
     return config
+
 
 if __name__ == "__main__":
     import asyncio

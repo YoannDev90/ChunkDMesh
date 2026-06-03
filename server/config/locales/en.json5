@@ -1,0 +1,8 @@
+{
+  en: {
+    //main.py
+    hello_world: "Hello, World!",
+    //api.py
+    sample_log_with_param: "This is a log message with a parameter: {param}",
+  },
+}

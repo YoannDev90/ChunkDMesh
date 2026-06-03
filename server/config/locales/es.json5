@@ -1,0 +1,6 @@
+{
+  es: {
+    hello_world: "\u00a1Hola, mundo!",
+    sample_log_with_param: "Este es un mensaje de registro con un par\u00e1metro: {param}",
+  },
+}
