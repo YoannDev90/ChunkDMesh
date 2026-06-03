@@ -26,6 +26,7 @@ from db import Batch, Client, Validation, World, get_db_session
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from jwt import PyJWTError, decode, encode
+from logging_utils import ulog
 from pydantic import BaseModel
 
 app = FastAPI(
@@ -154,8 +155,11 @@ async def get_batch(request: Request):
 
 @app.post("/tasks/submit")
 async def submit_tasks(submit_tasks_request: SubmitTasksRequest, request: Request):
-    print(
-        f"Received submission for batch {submit_tasks_request.batch_id} with hashes: {submit_tasks_request.chunk_hashes}"
+    ulog(
+        logging.INFO,
+        "submit_tasks_received",
+        batch_id=submit_tasks_request.batch_id,
+        chunk_hashes=submit_tasks_request.chunk_hashes,
     )
     return JSONResponse(
         {"status": "received", "batch_id": submit_tasks_request.batch_id}
@@ -170,8 +174,13 @@ async def upload_chunks(
     # decompress chunk_data with Zstd and save to disk (for testing)
     decompressed_data = zstd.ZSTD_uncompress(chunk_data)
     sha256_hash = hashlib.sha256(decompressed_data).hexdigest()
-    print(f"Decompressed chunk data for batch {batch_id}, SHA-256: {sha256_hash}")
-    print(f"Received chunk data for batch {batch_id}, size: {len(chunk_data)} bytes")
+    ulog(
+        logging.INFO,
+        "upload_chunks_received",
+        batch_id=batch_id,
+        sha256_hash=sha256_hash,
+        chunk_size=len(chunk_data),
+    )
     return JSONResponse({"status": "received", "batch_id": batch_id})
 
 

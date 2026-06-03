@@ -1,6 +1,6 @@
 {
   de: {
-    hello_world: "Hallo Welt!",
-    sample_log_with_param: "Dies ist eine Protokollnachricht mit einem Parameter: {param}",
+    submit_tasks_received: "Einreichung f\u00fcr Batch {batch_id} mit Hashes erhalten: {chunk_hashes}",
+    upload_chunks_received: "Empfangene Chunk-Daten f\u00fcr Batch {batch_id}, Gr\u00f6\u00dfe: {chunk_size} Bytes, SHA-256: {sha256_hash}",
   },
 }

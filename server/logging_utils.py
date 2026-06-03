@@ -1,12 +1,12 @@
+import datetime
 import logging
 import logging.config
 from typing import Optional
-from babel.dates import format_datetime
-from babel.numbers import format_decimal, format_percent
-from babel.core import Locale
-import datetime
 
 import json5
+from babel.core import Locale
+from babel.dates import format_datetime
+from babel.numbers import format_decimal, format_percent
 from colorama import Fore, Style
 
 _current_locale = "en"
@@ -23,14 +23,16 @@ class ColoredFormatter(logging.Formatter):
         logging.CRITICAL: Fore.MAGENTA,
     }
 
-    def __init__(self, fmt=None, datefmt=None, style='%', validate=True, *, defaults=None):
+    def __init__(
+        self, fmt=None, datefmt=None, style="%", validate=True, *, defaults=None
+    ):
         super().__init__(fmt, datefmt, style, validate, defaults=defaults)
         self.babel_locale = None
 
     def formatTime(self, record, datefmt=None):
         """Override pour formater le temps avec Babel selon la locale"""
         dt = datetime.datetime.fromtimestamp(record.created)
-        return format_datetime(dt, format='medium', locale=self.babel_locale)
+        return format_datetime(dt, format="medium", locale=self.babel_locale)
 
     def format(self, record: logging.LogRecord) -> str:
         color = self.LEVEL_COLORS.get(record.levelno, "")
@@ -75,6 +77,7 @@ def set_locale(lang: str, locale_format: Optional[str] = None):
             f"⚠️  Language '{lang}' not found. Available: {list(_translations.keys())}"
         )
 
+
 def _format_message(message: str, **kwargs) -> str:
     formatted_kwargs = {}
     for key, value in kwargs.items():
@@ -108,12 +111,15 @@ def setup_logging():
     logging.ColoredFormatter = ColoredFormatter
     load_translations()
     logging_config, locale_config = load_logging_config()
-    set_locale(locale_config.get("logs_locale_lang", "en"),locale_config.get("logs_locale_format", "en"))
+    set_locale(
+        locale_config.get("logs_locale_lang", "en"),
+        locale_config.get("logs_locale_format", "en"),
+    )
     logging.config.dictConfig(config=logging_config)
     return logging.getLogger(__name__)
 
 
-def log_a(level: int, key: str, **kwargs):
+def ulog(level: int, key: str, **kwargs):
     logger = logging.getLogger(__name__)
     message = get_message(key, **kwargs)
     logger.log(level, message)

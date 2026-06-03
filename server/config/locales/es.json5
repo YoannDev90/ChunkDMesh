@@ -1,6 +1,6 @@
 {
   es: {
-    hello_world: "\u00a1Hola, mundo!",
-    sample_log_with_param: "Este es un mensaje de registro con un par\u00e1metro: {param}",
+    submit_tasks_received: "Env\u00edo recibido para el lote {batch_id} con hashes: {chunk_hashes}",
+    upload_chunks_received: "Datos de fragmento recibidos para el lote {batch_id}, tama\u00f1o: {chunk_size} bytes, SHA-256: {sha256_hash}",
   },
 }

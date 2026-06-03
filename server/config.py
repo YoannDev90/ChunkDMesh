@@ -188,16 +188,3 @@ def load_config(path: str = "data/world_config.json5") -> dict:
     with open(path, "r") as f:
         config = json5.load(f)
     return config
-
-
-if __name__ == "__main__":
-    import asyncio
-
-    async def test_config():
-        config = Config()
-        print(config.to_dict())
-        await config.validate()
-        print(config.to_dict())
-        print("Config is valid!")
-
-    asyncio.run(test_config())

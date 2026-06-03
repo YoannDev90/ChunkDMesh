@@ -1,8 +1,7 @@
 {
   en: {
-    //main.py
-    hello_world: "Hello, World!",
     //api.py
-    sample_log_with_param: "This is a log message with a parameter: {param}",
+    submit_tasks_received: "Received submission for batch {batch_id} with hashes: {chunk_hashes}",
+    upload_chunks_received: "Received chunk data for batch {batch_id}, size: {chunk_size} bytes, SHA-256: {sha256_hash}",
   },
 }
