@@ -35,17 +35,35 @@ app = FastAPI(
 FAVICON_PATH = Path(__file__).resolve().parent / "config" / "favicon.ico"
 
 
-def run_api_async():
-    uvicorn.run(app, host="0.0.0.0", port=8000, reload=False)
+async def run_api():
+    config = uvicorn.Config(app, host="0.0.0.0", port=8000, log_level="info")
+    server = uvicorn.Server(config)
+    await server.serve()
 
 
-def generate_sk_key():
-    import secrets
-
-    key = secrets.token_hex(64)
+def get_secret_key():
     key_path = Path(__file__).resolve().parent / "config" / "key.pem"
+    if key_path.exists():
+        return key_path.read_text().strip()
+    
+    import secrets
+    key = secrets.token_hex(64)
+    key_path.parent.mkdir(parents=True, exist_ok=True)
     key_path.write_text(key)
     return key
+
+
+async def verify_token(authorization: Optional[str] = Header(None)):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing or invalid token")
+    
+    token = authorization.split(" ")[1]
+    sk_key = get_secret_key()
+    try:
+        payload = decode(token, sk_key, algorithms=["HS256"])
+        return payload
+    except PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
 
 
 def file_stream_generator(
@@ -67,10 +85,6 @@ class LoginRequest(BaseModel):
 class SubmitTasksRequest(BaseModel):
     batch_id: int
     chunk_hashes: Dict[str, str]  # {"chunk_x_z": "sha256hash"}
-
-
-class UploadChunksRequest(BaseModel):
-    chunk_data: bytes  # Zstd-compressed binary data
 
 
 @app.get("/")
@@ -101,11 +115,7 @@ async def login(login_request: LoginRequest, request: Request):
         "cpu_cores": login_request.cpu_cores,
         "ram_gb": login_request.ram_gb,
     }
-    key_path = Path(__file__).resolve().parent / "config" / "key.pem"
-    if key_path.exists() and key_path.is_file():
-        sk_key = key_path.read_text()
-    else:
-        sk_key = generate_sk_key()
+    sk_key = get_secret_key()
     jwt_token = encode(payload, sk_key, algorithm="HS256")
     async with get_db_session() as session:
         session.add(
@@ -122,8 +132,10 @@ async def login(login_request: LoginRequest, request: Request):
 
 
 @app.get("/assets/mods.zip")
-async def get_mods(request: Request):
+async def get_mods(request: Request, token_data: dict = Depends(verify_token)):
     zip_path = "data/mods.zip"
+    if not os.path.exists(zip_path):
+        raise HTTPException(status_code=404, detail="Mods not found")
     filename = os.path.basename(zip_path)
     headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
     return StreamingResponse(
@@ -132,7 +144,7 @@ async def get_mods(request: Request):
 
 
 @app.get("/assets/config.json")
-async def get_config(request: Request):
+async def get_config(request: Request, token_data: dict = Depends(verify_token)):
     from config import Config
 
     config = Config()
@@ -142,7 +154,8 @@ async def get_config(request: Request):
 
 
 @app.get("/tasks/batch")
-async def get_batch(request: Request):
+async def get_batch(request: Request, token_data: dict = Depends(verify_token)):
+    # TODO: Implement real batch logic from DB
     batch = {
         "batch_id": 123,
         "region_x": 0,
@@ -154,7 +167,7 @@ async def get_batch(request: Request):
 
 
 @app.post("/tasks/submit")
-async def submit_tasks(submit_tasks_request: SubmitTasksRequest, request: Request):
+async def submit_tasks(submit_tasks_request: SubmitTasksRequest, request: Request, token_data: dict = Depends(verify_token)):
     ulog(
         logging.INFO,
         "submit_tasks_received",
@@ -168,20 +181,24 @@ async def submit_tasks(submit_tasks_request: SubmitTasksRequest, request: Reques
 
 @app.put("/tasks/upload/{batch_id}")
 async def upload_chunks(
-    batch_id: str, upload_chunks_request: UploadChunksRequest, request: Request
+    batch_id: int, request: Request, token_data: dict = Depends(verify_token)
 ):
-    chunk_data = upload_chunks_request.chunk_data
+    chunk_data = await request.body()
     # decompress chunk_data with Zstd and save to disk (for testing)
-    decompressed_data = zstd.ZSTD_uncompress(chunk_data)
-    sha256_hash = hashlib.sha256(decompressed_data).hexdigest()
-    ulog(
-        logging.INFO,
-        "upload_chunks_received",
-        batch_id=batch_id,
-        sha256_hash=sha256_hash,
-        chunk_size=len(chunk_data),
-    )
-    return JSONResponse({"status": "received", "batch_id": batch_id})
+    try:
+        decompressed_data = zstd.decompress(chunk_data)
+        sha256_hash = hashlib.sha256(decompressed_data).hexdigest()
+        ulog(
+            logging.INFO,
+            "upload_chunks_received",
+            batch_id=batch_id,
+            sha256_hash=sha256_hash,
+            chunk_size=len(chunk_data),
+        )
+        return JSONResponse({"status": "received", "batch_id": batch_id})
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Decompression failed: {str(e)}")
+
 
 
 @app.get("/admin/heatmap")

@@ -13,7 +13,7 @@ from datetime import datetime
 from typing import List, Optional
 
 from sqlalchemy import (BIGINT, DateTime, ForeignKey, Integer, String, Text,
-                        func)
+                        func, UniqueConstraint)
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import (Mapped, declarative_base, mapped_column,
                             relationship, sessionmaker)
@@ -72,6 +72,16 @@ class Batch(Base):
     validations: Mapped[List["Validation"]] = relationship(
         "Validation", back_populates="batch"
     )
+
+
+class Task(Base):
+    __tablename__ = "tasks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    region_x: Mapped[int] = mapped_column(Integer, nullable=False)
+    region_z: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    __table_args__ = (UniqueConstraint("region_x", "region_z", name="uq_task_region"),)
 
 
 class Validation(Base):
