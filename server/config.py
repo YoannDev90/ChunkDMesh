@@ -1,13 +1,15 @@
 import math
-import os
 import random
 import asyncio
 from typing import Optional
 
 import json5
 
-from mc_utils import get_loader_version_sync, get_minecraft_versions_sync, get_chunky_version
-
+from mc_utils import (
+    get_loader_version,
+    get_minecraft_versions,
+    get_chunky_version,
+)
 
 
 class ChunkyShape:
@@ -41,61 +43,116 @@ class ChunkyDimension:
     END = "end"
     CUSTOM = "custom"
 
+
 class SupportedLoaders:
     FABRIC = "fabric"
     FORGE = "forge"
     QUILT = "quilt"
     NEOFORGE = "neoforge"
 
+
 class Config:
-    def __init__(self, path="data/world_config.json5"):
+    def __init__(self, path: str = "data/world_config.json5"):
         self.path = path
         self.config = load_config(path)
-        self.minecraft_version: str = self.config.get("minecraft_version") or None
-        self.minecraft_loader: str = self.config.get("minecraft_loader") or None
-        self.loader_version: str = self.config.get("loader_version") or None
-        self.chunky_version: str = self.config.get("chunky_version") or None
-        self.world_name: str = self.config.get("world_name") or None
+        self._validated = False
+
+        self.minecraft_version: str = self.config.get("minecraft_version")
+        self.minecraft_loader: str = self.config.get("minecraft_loader")
+        self.loader_version: str = self.config.get("loader_version")
+        self.chunky_version: str = self.config.get("chunky_version")
+        self.world_name: str = self.config.get("world_name")
         self.dimension: str = self.config.get("dimension") or "overworld"
         self.center: list = self.config.get("center") or [float("nan"), float("nan")]
         self.seed: float = self.config.get("seed") or float("nan")
         self.radius: int = self.config.get("radius") or 1024
         self.shape: str = self.config.get("shape") or "square"
         self.pattern: str = self.config.get("pattern") or "regions"
-        self.max_clients: int = self.config.get("max_clients") or None
+        self.max_clients: int = self.config.get("max_clients") or 100
         self.chunk_format: str = self.config.get("chunk_format") or "sha256"
         self.verification: bool = self.config.get("verification") or False
         self.use_spawn_as_center: bool = False
 
-        if self.minecraft_loader not in [
-            l for l in vars(SupportedLoaders).values() if isinstance(l, str)
-        ]:
-            raise ValueError(f"Invalid Minecraft loader: {self.minecraft_loader}")
-        if not self.minecraft_version in get_minecraft_versions_sync():
-            raise ValueError(f"Invalid Minecraft version: {self.minecraft_version}")
-        if not self.loader_version in get_loader_version_sync(self.minecraft_loader, self.minecraft_version):
-            raise ValueError(f"Invalid loader version: {self.loader_version} for loader {self.minecraft_loader} and Minecraft version {self.minecraft_version}")
-        if not get_chunky_version(self.chunky_version, self.minecraft_loader, self.minecraft_version):
-            raise ValueError(f"Invalid Chunky version: {self.chunky_version} for loader {self.minecraft_loader} and Minecraft version {self.minecraft_version}")
-        if math.isnan(self.center[0]) or math.isnan(self.center[1]):
-            self.center = [0, 0]
+        self._normalize_defaults()
+
+    def save_config(self) -> None:
+        with open(self.path, "w") as f:
+            json5.dump(self.to_dict(), f, indent=4)
+
+    def _normalize_defaults(self) -> None:
+        if isinstance(self.center[0], int) or isinstance(self.center[0], float) and isinstance(self.center[1], int) or isinstance(self.center[1], float):
+            if math.isnan(self.center[0]) or math.isnan(self.center[1]):
+                self.center = [None, None]
+                self.use_spawn_as_center = True
+
+        if self.center[0] is None or self.center[1] is None:
+            self.center = [None, None]
             self.use_spawn_as_center = True
+
         if self.radius <= 0:
             raise ValueError("Radius must be a positive integer")
+
         if math.isnan(self.seed):
             self.seed = random.randint(-(10**18), 10**18)
-        if self.shape not in [
-            s for s in vars(ChunkyShape).values() if isinstance(s, str)
-        ]:
+
+        valid_dimensions = [d for d in vars(ChunkyDimension).values() if isinstance(d, str)]
+        if self.dimension not in valid_dimensions:
+            raise ValueError(f"Invalid dimension: {self.dimension}")
+
+        valid_shapes = [s for s in vars(ChunkyShape).values() if isinstance(s, str)]
+        if self.shape not in valid_shapes:
             raise ValueError(f"Invalid shape: {self.shape}")
-        if self.pattern not in [
+
+        valid_patterns = [
             s for s in vars(ChunkyPattern).values() if isinstance(s, str)
-        ]:
+        ]
+        if self.pattern not in valid_patterns:
             raise ValueError(f"Invalid pattern: {self.pattern}")
-        if math.isnan(self.max_clients) or self.max_clients > 100:
+
+        if self.max_clients is None or self.max_clients > 100 or self.max_clients <= 0 or not isinstance(self.max_clients, int):
             self.max_clients = 100
 
-    def __dict__(self):
+        self.save_config()
+
+    async def validate(self) -> None:
+        if self._validated:
+            return
+
+        supported_loaders = [
+            l for l in vars(SupportedLoaders).values() if isinstance(l, str)
+        ]
+        if self.minecraft_loader not in supported_loaders:
+            raise ValueError(f"Invalid Minecraft loader: {self.minecraft_loader}")
+
+        minecraft_versions = await get_minecraft_versions()
+        if self.minecraft_version not in minecraft_versions:
+            raise ValueError(
+                f"Invalid Minecraft version: {self.minecraft_version}. "
+                f"Available: {minecraft_versions[:3]}..."
+            )
+
+        loader_versions = await get_loader_version(loader=self.minecraft_loader, minecraft_version=self.minecraft_version)
+        if self.loader_version not in loader_versions:
+            raise ValueError(
+                f"Invalid loader version: {self.loader_version} for loader "
+                f"{self.minecraft_loader} and Minecraft version {self.minecraft_version}"
+            )
+
+        chunky_id = await get_chunky_version(version=self.chunky_version, loader=self.minecraft_loader, minecraft_version=self.minecraft_version)
+        if not chunky_id:
+            raise ValueError(
+                f"Invalid Chunky version: {self.chunky_version} for loader "
+                f"{self.minecraft_loader} and Minecraft version {self.minecraft_version}"
+            )
+
+        self.save_config()
+        self._validated = True
+
+    async def __aenter__(self):
+        await self.validate()
+        return self
+
+    def to_dict(self) -> dict:
         return {
             "minecraft_version": self.minecraft_version,
             "minecraft_loader": self.minecraft_loader,
@@ -114,13 +171,19 @@ class Config:
             "use_spawn_as_center": self.use_spawn_as_center,
         }
 
-
-def load_config(path="data/world_config.json5"):
+def load_config(path: str = "data/world_config.json5") -> dict:
     with open(path, "r") as f:
         config = json5.load(f)
     return config
 
-
 if __name__ == "__main__":
-    config = Config()
-    print(config.__dict__())
+    import asyncio
+
+    async def test_config():
+        config = Config()
+        print(config.to_dict())
+        await config.validate()
+        print(config.to_dict())
+        print("Config is valid!")
+
+    asyncio.run(test_config())

@@ -134,8 +134,10 @@ async def get_mods(request: Request):
 async def get_config(request: Request):
     from config import Config
 
-    config = Config().__dict__()
-    return JSONResponse(config)
+    config = Config()
+    await config.validate()
+    config_dict = config.to_dict()
+    return JSONResponse(config_dict)
 
 
 @app.get("/tasks/batch")

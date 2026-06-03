@@ -186,32 +186,14 @@ async def get_chunky_version(version: str, loader: str, minecraft_version: Optio
     except httpx.HTTPError as e:
         raise RuntimeError(f"Error connecting to GitHub API: {e}")
 
-def get_latest_minecraft_release_version_sync():
-    return asyncio.run(get_latest_minecraft_release_version())
-
-def get_forge_versions_sync(minecraft_version: Optional[str] = None) -> list:
-    return asyncio.run(get_forge_versions(minecraft_version))
-
-def get_neoforge_versions_sync(minecraft_version: Optional[str] = None) -> list:
-    return asyncio.run(get_neoforge_versions(minecraft_version))
-
-def get_quilt_versions_sync(minecraft_version: Optional[str] = None) -> list:
-    return asyncio.run(get_quilt_versions(minecraft_version))
-
-def get_fabric_versions_sync(minecraft_version: Optional[str] = None) -> list:
-    return asyncio.run(get_fabric_versions(minecraft_version))
-
-def get_minecraft_versions_sync(version_type: Optional[str] = None) -> str:
-    return asyncio.run(get_minecraft_versions(version_type))
-
-def get_loader_version_sync(loader: str, minecraft_version: Optional[str] = None) -> list:
+async def get_loader_version(loader: str, minecraft_version: Optional[str] = None) -> list:
     if loader == "forge":
-        return get_forge_versions_sync(minecraft_version)
+        return await get_forge_versions(minecraft_version)
     elif loader == "fabric":
-        return get_fabric_versions_sync(minecraft_version)
+        return await get_fabric_versions(minecraft_version)
     elif loader == "quilt":
-        return get_quilt_versions_sync(minecraft_version)
+        return await get_quilt_versions(minecraft_version)
     elif loader == "neoforge":
-        return get_neoforge_versions_sync(minecraft_version)
+        return await get_neoforge_versions(minecraft_version)
     else:
         raise ValueError(f"Unsupported loader type: {loader}")
