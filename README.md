@@ -9,22 +9,16 @@
  \____/\_| |_/\___/\_| \_/\_| \_/     |___/        \_|  |_/\____/\____/\_| |_/
 ```
 
-Petit projet visant à expérimenter la distribution et l'allocation de "chunks" dans un réseau maillé.
+A small project aimed at experimenting with the distribution and allocation of "chunks" in a mesh network.
 
-Le projet est en grande partie basé sur le serveur officiel téléchargeable depuis Mojang, et sur le mod/plugin Chunky, qui a une excellente gestion du threading.
+The project is largely based on the official server, which can be downloaded from Mojang, and on the Chunky mod/plugin, which features excellent threading management.
 
-## Caractéristiques
+## Requirements
 
-- Échange pair-à-pair de chunks
-- Allocation/verification côté orchestrateur
-- Configuration JSON/JSON5 légère
+- Python 3.10+ (recommanded)
+- See [`requirements.txt`](/requirements.txt) for dependancies
 
-## Prérequis
-
-- Python 3.10+ (recommandé)
-- Voir `requirements.txt` pour les dépendances
-
-## Installation rapide
+## Fast install
 
 ```sh
   python -m venv .venv
@@ -34,20 +28,9 @@ Le projet est en grande partie basé sur le serveur officiel téléchargeable de
 
 ## Usage
 
-- L'orchestrateur principal se lance depuis `orchestrator/main.py`.
-- La configuration se trouve dans le dossier `config/`.
-
-Exemple :
-
-```sh
-  python -m orchestrator.main
-```
-
-## Contribuer
-
-- Ouvrez une issue pour discuter des fonctionnalités.
-- PR bienvenues ; gardez les changements petits et documentés.
+- Configure your world, seed, radius, etc in [`server/config/world_config.json5`](/server/config/world_config.json5).
+- Launch the server from [`server/main.py`](/server/main.py).
 
 ## Licence
 
-Ce projet est fourni sous licence Apache v2.0 (voir le fichier `LICENSE`).
+This project is provided under Apache v2.0 License, see [`LICENSE`](/LICENSE).

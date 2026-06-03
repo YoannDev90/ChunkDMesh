@@ -185,13 +185,13 @@ Selon le type de déploiement, le serveur supporte trois modes de stockage pour 
 - [X] **1.1 Structure API** : Initialisation FastAPI + Système de logs.
 - [X] **1.2 Base de Données** : Schéma SQLite (Clients, Worlds, Batches, Validations).
 - [ ] **1.3 Dashboard Minimal** : Route Jinja2 affichant la liste des clients et l'état global.
-- [ ] **1.4 Auth & Registration** : Endpoint `/auth/register` (Gestion Whitelist/Mode Public).
+- [X] **1.4 Auth & Registration** : Endpoint `/auth/register` (Gestion Whitelist/Mode Public).
 - [ ] **1.5 Gestionnaire de Manifeste** : Logique de création du JSON de session à partir des fichiers locaux.
 
 ### Phase 2 : Communication & Assets
 
 - [X] **2.1 File Server** : Endpoint de streaming pour le `mods.zip` et les JARs.
-- [ ] **2.2 Logique de Batching** : Algorithme de découpe d'une zone (ex: -5000 à +5000) en régions `r.X.Z.mca`.
+- [X] **2.2 Logique de Batching** : Algorithme de découpe d'une zone (ex: -5000 à +5000) en régions `r.X.Z.mca`.
 - [ ] **2.3 Attribution des tâches** : Endpoint `/tasks/next` gérant les timeouts et les réattributions.
 
 ### Phase 3 : Le Client "Worker" de base
