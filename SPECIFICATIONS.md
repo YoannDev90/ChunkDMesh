@@ -39,6 +39,7 @@ Le projet adopte une architecture Client-Serveur via une API REST/WebSocket.
 ### 3.3 Distribution Hybride P2P (Optionnelle)
 
 Pour soulager le serveur central lors de sessions avec de nombreux clients :
+
 - **Protocole BitTorrent** : Le serveur peut générer un `.torrent` pour le `mods.zip`. Les clients deviennent des "seeders" après avoir téléchargé l'archive, réduisant drastiquement l'egress du serveur.
 - **Peer-to-Peer Data Transfer** : Les fichiers de région `.mca` validés peuvent être partagés directement entre les clients pour les phases de double-vérification.
 
@@ -81,6 +82,7 @@ Pour soulager le serveur central lors de sessions avec de nombreux clients :
 ### 4.4 Assemblage du Monde (MCA Replacement)
 
 L'unité de base étant la région (32x32 chunks), la fusion est simplifiée :
+
 - **Remplacement de Fichier** : Le serveur reçoit un fichier `.mca` complet.
 - **Vérification de l'Intégrité** : Le serveur vérifie que le fichier est un format Anvil valide et que son nom correspond à la région attendue (`r.X.Z.mca`).
 - **Stockage Final** : Le fichier est déplacé directement dans le dossier `world/region/` final.

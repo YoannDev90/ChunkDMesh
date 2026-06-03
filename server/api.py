@@ -155,13 +155,14 @@ async def get_config(request: Request, token_data: dict = Depends(verify_token))
 
 @app.get("/tasks/batch")
 async def get_batch(request: Request, token_data: dict = Depends(verify_token)):
-    # TODO: Implement real batch logic from DB
+    from tasker import attribute_tasks_to_client
+    client_id = token_data.get("client_id")
+    if not client_id:
+        raise HTTPException(status_code=400, detail="Invalid token payload")
+    batch_id, region_coords = await attribute_tasks_to_client(client_id)
     batch = {
-        "batch_id": 123,
-        "region_x": 0,
-        "region_z": 0,
-        "world_name": "ExampleWorld",
-        "dimension": "overworld",
+        "batch_id": batch_id,
+        "regions": [{"region_x": rx, "region_z": rz} for rx, rz in region_coords],
     }
     return JSONResponse(batch)
 

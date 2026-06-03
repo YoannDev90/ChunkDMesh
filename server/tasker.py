@@ -1,5 +1,5 @@
 from config import Config, ChunkyShape
-from db import Task, get_db_session
+from db import Task, Client, Batch, get_db_session
 import math
 
 async def fill_tasks_table(config: Config):
@@ -55,3 +55,30 @@ async def fill_tasks_table(config: Config):
             await session.commit()
     
     print("Tasks table filled.")
+
+async def attribute_tasks_to_client(client_id: int):
+    SIZE = 10
+
+    # Get SIZE tasks from the tasks table
+    async with get_db_session() as session:
+        result = await session.execute(
+            Task.__table__.select().limit(SIZE)
+        )
+        tasks = result.scalars().all()
+
+    region_coords = [(task.region_x, task.region_z) for task in tasks]
+    print(f"Attributing {len(region_coords)} tasks to client {client_id}: {region_coords}")
+
+    # Create a new batch for this client
+    async with get_db_session() as session:
+        result = await session.execute(
+            Batch.__table__.insert().values(client_id=client_id).returning(Batch.id)
+        )
+        batch_id = result.scalar_one()
+
+        await session.commit()
+
+    return batch_id, region_coords
+
+    
+
