@@ -78,9 +78,7 @@ def file_stream_generator(
 
 
 class LoginRequest(BaseModel):
-    cpu_cores: int
-    ram_gb: int
-
+    power_score: float
 
 class SubmitTasksRequest(BaseModel):
     batch_id: int
@@ -112,8 +110,7 @@ async def login(login_request: LoginRequest, request: Request):
     payload = {
         "client_ip": request.client.host,
         "timestamp": int(datetime.datetime.now().timestamp()),
-        "cpu_cores": login_request.cpu_cores,
-        "ram_gb": login_request.ram_gb,
+        "power_score" : login_request.power_score,
     }
     sk_key = get_secret_key()
     jwt_token = encode(payload, sk_key, algorithm="HS256")
@@ -122,8 +119,7 @@ async def login(login_request: LoginRequest, request: Request):
             Client(
                 token=jwt_token,
                 ip=request.client.host,
-                cpu_cores=login_request.cpu_cores,
-                ram_gb=login_request.ram_gb,
+                power_score=login_request.power_score,
             )
         )
         await session.commit()

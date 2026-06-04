@@ -29,9 +29,7 @@ class Client(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     token: Mapped[Optional[str]] = mapped_column(String(128), unique=True)
     ip: Mapped[Optional[str]] = mapped_column(String(45))
-    reput: Mapped[int] = mapped_column(Integer, default=0)
-    cpu_cores: Mapped[Optional[int]] = mapped_column(Integer)
-    ram_gb: Mapped[Optional[int]] = mapped_column(Integer)
+    power_score: Mapped[Optional[float]] = mapped_column()
     last_seen: Mapped[Optional[datetime]] = mapped_column(DateTime)
 
     batches: Mapped[List["Batch"]] = relationship("Batch", back_populates="client")

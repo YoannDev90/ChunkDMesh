@@ -4,9 +4,7 @@ CREATE TABLE IF NOT EXISTS clients (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     token TEXT UNIQUE,
     ip TEXT,
-    reput INTEGER DEFAULT 0,
-    cpu_cores INTEGER,
-    ram_gb INTEGER,
+    power_score REAL,
     last_seen DATETIME
 );
 
