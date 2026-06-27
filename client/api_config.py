@@ -41,8 +41,8 @@ ENDPOINTS = {
     Endpoints.HEALTH: EndpointConfig(HEALTH_ENDPOINT, Methods.GET),
     Endpoints.MODS: EndpointConfig(MODS_ENDPOINT, Methods.GET, headers={"Authorization": "Bearer <token>"}),
     Endpoints.CONFIG: EndpointConfig(CONFIG_ENDPOINT, Methods.GET, headers={"Authorization": "Bearer <token>"}),
-    Endpoints.TASKS_BATCH: EndpointConfig(TASKS_BATCH_ENDPOINT, Methods.POST, headers={"Authorization": "Bearer <token>"}),
+    Endpoints.TASKS_BATCH: EndpointConfig(TASKS_BATCH_ENDPOINT, Methods.GET, headers={"Authorization": "Bearer <token>"}),
     Endpoints.TASKS_SUBMIT: EndpointConfig(TASKS_SUBMIT_ENDPOINT, Methods.POST, headers={"Authorization": "Bearer <token>"}, payload={"batch_id": "int", "chunk_hashes": "dict"}),
-    Endpoints.TASKS_UPLOAD: EndpointConfig(TASKS_UPLOAD_ENDPOINT, Methods.POST, headers={"Authorization": "Bearer <token>"}, payload={"file": "bytes"})
+    Endpoints.TASKS_UPLOAD: EndpointConfig(TASKS_UPLOAD_ENDPOINT, Methods.PUT, headers={"Authorization": "Bearer <token>"}, payload={"file": "bytes"})
 }
 
