@@ -1,0 +1,5 @@
+<div style="display:grid; grid-template-columns: repeat({{ cols }}, 12px); gap: 2px;">
+{% for region in regions %}
+<div class="cell {{ region.status }}" title="({{ region.region_x }}, {{ region.region_z }}) - {{ region.status }}"></div>
+{% endfor %}
+</div>

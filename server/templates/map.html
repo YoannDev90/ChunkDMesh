@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ChunkDMesh - Map</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0a0a0a; color: #e0e0e0; overflow: hidden; height: 100vh; }
+        #map-container { width: 100%; height: 100vh; position: relative; cursor: grab; overflow: hidden; }
+        #map-container:active { cursor: grabbing; }
+        #grid-canvas { position: absolute; top: 0; left: 0; }
+        #hud { position: fixed; top: 12px; left: 12px; background: rgba(15,15,15,0.92); border: 1px solid #333; border-radius: 8px; padding: 14px 18px; z-index: 10; pointer-events: none; }
+        #hud .title { font-size: 1rem; font-weight: 600; color: #4ade80; margin-bottom: 8px; }
+        #hud .row { font-size: 0.8rem; color: #aaa; line-height: 1.6; }
+        #hud .row span { color: #e0e0e0; font-family: monospace; }
+        #controls { position: fixed; top: 12px; right: 12px; z-index: 10; display: flex; flex-direction: column; gap: 6px; }
+        #controls button { width: 36px; height: 36px; border: 1px solid #333; border-radius: 6px; background: rgba(15,15,15,0.92); color: #e0e0e0; font-size: 1.1rem; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+        #controls button:hover { background: #222; }
+        #tooltip { position: fixed; background: rgba(0,0,0,0.85); border: 1px solid #555; border-radius: 4px; padding: 6px 10px; font-size: 0.75rem; pointer-events: none; z-index: 20; display: none; }
+        #loading { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); color: #666; font-size: 1rem; z-index: 5; background: rgba(10,10,10,0.9); padding: 16px 24px; border-radius: 8px; }
+        #refresh-btn { position: fixed; bottom: 12px; right: 12px; z-index: 10; border: 1px solid #333; border-radius: 6px; background: rgba(15,15,15,0.92); color: #4ade80; padding: 8px 16px; cursor: pointer; font-size: 0.8rem; }
+        #refresh-btn:hover { background: #222; }
+    </style>
+</head>
+<body>
+    <div id="map-container">
+        <canvas id="grid-canvas"></canvas>
+        <div id="loading">Loading tiles...</div>
+    </div>
+
+    <div id="hud">
+        <div class="title">ChunkDMesh Map</div>
+        <div class="row">Cursor: <span id="hud-cursor">--</span></div>
+        <div class="row">Zoom: <span id="hud-zoom">1.0x</span></div>
+        <div class="row">Region: <span id="hud-pos">--</span></div>
+        <div class="row">Tiles: <span id="hud-tiles">0</span></div>
+    </div>
+
+    <div id="controls">
+        <button id="btn-zoom-in" title="Zoom in">+</button>
+        <button id="btn-zoom-out" title="Zoom out">-</button>
+        <button id="btn-reset" title="Reset view">⌖</button>
+    </div>
+
+    <div id="tooltip">
+        <div id="tip-block"></div>
+    </div>
+
+    <button id="refresh-btn">↻ Refresh</button>
+
+    <script>
+    const container = document.getElementById('map-container');
+    const canvas = document.getElementById('grid-canvas');
+    const ctx = canvas.getContext('2d');
+    const tooltip = document.getElementById('tooltip');
+    const hudCursor = document.getElementById('hud-cursor');
+    const hudZoom = document.getElementById('hud-zoom');
+    const hudPos = document.getElementById('hud-pos');
+    const hudTiles = document.getElementById('hud-tiles');
+    const loading = document.getElementById('loading');
+
+    const TILE = 512;
+    let zoom = 1.0;
+    let viewX = 0, viewY = 0;
+    let isDragging = false, dragStartX, dragStartY, viewStartX, viewStartY;
+    let regions = {};
+    let tileCache = {};
+    let loadingTiles = {};
+    let lastScale = 1;
+
+    function resize() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        render();
+    }
+    window.addEventListener('resize', resize);
+
+    function getScaleForZoom() {
+        if (zoom < 0.5) return 1;
+        if (zoom < 1) return 2;
+        if (zoom < 2) return 4;
+        if (zoom < 4) return 8;
+        return 16;
+    }
+
+    function tileKey(rx, rz, scale) { return `${rx},${rz},s${scale}`; }
+
+    function getVisibleTiles() {
+        const ts = TILE * zoom;
+        const scale = getScaleForZoom();
+        const keys = [];
+        for (const key of Object.keys(regions)) {
+            const [rx, rz] = key.split(',').map(Number);
+            const sx = viewX + rx * ts;
+            const sy = viewY + rz * ts;
+            if (sx + ts >= -ts && sx < canvas.width + ts &&
+                sy + ts >= -ts && sy < canvas.height + ts) {
+                keys.push(key);
+            }
+        }
+        return keys;
+    }
+
+    function loadTile(rx, rz) {
+        const scale = getScaleForZoom();
+        const key = tileKey(rx, rz, scale);
+        if (tileCache[key] || loadingTiles[key]) return;
+        loadingTiles[key] = true;
+        const img = new Image();
+        img.onload = () => {
+            tileCache[key] = img;
+            delete loadingTiles[key];
+            render();
+        };
+        img.onerror = () => {
+            delete loadingTiles[key];
+        };
+        img.src = `/admin/map/render/${rx}/${rz}?scale=${scale}&t=${Date.now()}`;
+    }
+
+    function loadVisibleTiles() {
+        for (const key of getVisibleTiles()) {
+            const [rx, rz] = key.split(',').map(Number);
+            loadTile(rx, rz);
+        }
+    }
+
+    function checkScaleChange() {
+        const newScale = getScaleForZoom();
+        if (newScale !== lastScale) {
+            lastScale = newScale;
+            for (const k of Object.keys(tileCache)) {
+                delete tileCache[k];
+            }
+            for (const k of Object.keys(loadingTiles)) {
+                delete loadingTiles[k];
+            }
+        }
+    }
+
+    function render() {
+        ctx.fillStyle = '#0a0a0a';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        const ts = TILE * zoom;
+        const scale = getScaleForZoom();
+        const keys = Object.keys(regions);
+        let loadedCount = 0;
+
+        for (const key of keys) {
+            const [rx, rz] = key.split(',').map(Number);
+            const sx = viewX + rx * ts;
+            const sy = viewY + rz * ts;
+
+            if (sx + ts >= -ts && sx < canvas.width + ts &&
+                sy + ts >= -ts && sy < canvas.height + ts) {
+                const tkey = tileKey(rx, rz, scale);
+                if (tileCache[tkey]) {
+                    ctx.drawImage(tileCache[tkey], sx, sy, ts, ts);
+                    loadedCount++;
+                } else {
+                    ctx.fillStyle = 'rgba(30,30,30,0.5)';
+                    ctx.fillRect(sx, sy, ts, ts);
+                }
+            }
+        }
+
+        hudTiles.textContent = `${loadedCount}/${getVisibleTiles().length}`;
+
+        ctx.strokeStyle = 'rgba(255,255,255,0.10)';
+        ctx.lineWidth = 1;
+        for (const key of keys) {
+            const [rx, rz] = key.split(',').map(Number);
+            const sx = viewX + rx * ts;
+            const sy = viewY + rz * ts;
+            if (sx + ts >= -ts && sx < canvas.width + ts &&
+                sy + ts >= -ts && sy < canvas.height + ts) {
+                ctx.strokeRect(sx, sy, ts, ts);
+            }
+        }
+
+        if (zoom >= 1.5) {
+            ctx.fillStyle = 'rgba(255,255,255,0.35)';
+            ctx.font = `${Math.max(9, 10 * zoom)}px monospace`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            for (const key of keys) {
+                const [rx, rz] = key.split(',').map(Number);
+                const sx = viewX + (rx + 0.5) * ts;
+                const sy = viewY + (rz + 0.5) * ts;
+                if (sx >= -ts && sx < canvas.width + ts &&
+                    sy >= -ts && sy < canvas.height + ts) {
+                    ctx.fillText(`${rx},${rz}`, sx, sy);
+                }
+            }
+        }
+
+        const loadedTotal = Object.keys(tileCache).length;
+        if (loadedTotal === 0 && keys.length > 0) {
+            loading.style.display = 'block';
+            loading.textContent = `Loading tiles... (${loadedTotal}/${keys.length})`;
+        } else {
+            loading.style.display = 'none';
+        }
+    }
+
+    container.addEventListener('mousedown', (e) => {
+        isDragging = true;
+        dragStartX = e.clientX;
+        dragStartY = e.clientY;
+        viewStartX = viewX;
+        viewStartY = viewY;
+    });
+
+    window.addEventListener('mousemove', (e) => {
+        if (isDragging) {
+            viewX = viewStartX + (e.clientX - dragStartX);
+            viewY = viewStartY + (e.clientY - dragStartY);
+            render();
+            loadVisibleTiles();
+        }
+
+        const mx = (e.clientX - viewX) / zoom;
+        const my = (e.clientY - viewY) / zoom;
+        const bx = Math.floor(mx);
+        const bz = Math.floor(my);
+        const rx = Math.floor(bx / TILE);
+        const rz = Math.floor(bz / TILE);
+
+        hudCursor.textContent = `${bx}, ${bz}`;
+        hudPos.textContent = `r.${rx}.${rz}`;
+
+        const key = `${rx},${rz}`;
+        if (regions[key]) {
+            tooltip.style.display = 'block';
+            tooltip.style.left = (e.clientX + 14) + 'px';
+            tooltip.style.top = (e.clientY + 14) + 'px';
+            document.getElementById('tip-block').textContent = `Region (${rx}, ${rz})`;
+        } else {
+            tooltip.style.display = 'none';
+        }
+    });
+
+    window.addEventListener('mouseup', () => { isDragging = false; });
+
+    container.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const factor = e.deltaY < 0 ? 1.2 : 0.833;
+        const newZoom = Math.max(0.1, Math.min(20, zoom * factor));
+        const mx = e.clientX;
+        const my = e.clientY;
+        viewX = mx - (mx - viewX) * (newZoom / zoom);
+        viewY = my - (my - viewY) * (newZoom / zoom);
+        zoom = newZoom;
+        hudZoom.textContent = zoom.toFixed(1) + 'x';
+        checkScaleChange();
+        render();
+        loadVisibleTiles();
+    }, { passive: false });
+
+    document.getElementById('btn-zoom-in').addEventListener('click', () => {
+        zoom = Math.min(20, zoom * 1.4);
+        hudZoom.textContent = zoom.toFixed(1) + 'x';
+        checkScaleChange();
+        render();
+        loadVisibleTiles();
+    });
+    document.getElementById('btn-zoom-out').addEventListener('click', () => {
+        zoom = Math.max(0.1, zoom * 0.7);
+        hudZoom.textContent = zoom.toFixed(1) + 'x';
+        checkScaleChange();
+        render();
+        loadVisibleTiles();
+    });
+    document.getElementById('btn-reset').addEventListener('click', () => {
+        zoom = 1.0;
+        viewX = (canvas.width - TILE) / 2;
+        viewY = (canvas.height - TILE) / 2;
+        hudZoom.textContent = '1.0x';
+        render();
+        loadVisibleTiles();
+    });
+
+    document.getElementById('refresh-btn').addEventListener('click', () => {
+        tileCache = {};
+        render();
+        fetchRegions();
+    });
+
+    async function fetchRegions() {
+        try {
+            const resp = await fetch('/admin/map/regions');
+            const data = await resp.json();
+            const newRegions = {};
+            for (const r of data.regions) {
+                newRegions[`${r.region_x},${r.region_z}`] = r.status;
+            }
+            regions = newRegions;
+            if (Object.keys(regions).length > 0) {
+                loading.textContent = 'Loading tiles...';
+                loading.style.display = 'block';
+            } else {
+                loading.textContent = 'No regions generated yet.';
+            }
+            render();
+            loadVisibleTiles();
+        } catch (e) {
+            console.error('Failed to fetch regions:', e);
+        }
+    }
+
+    resize();
+    fetchRegions();
+    setInterval(fetchRegions, 5000);
+    </script>
+</body>
+</html>
