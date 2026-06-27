@@ -1,6 +1,7 @@
 import asyncio
 import math
 import random
+from pathlib import Path
 from typing import Optional
 
 import json5
@@ -48,15 +49,17 @@ class SupportedLoaders:
 
 
 class Config:
-    def __init__(self, path: str = "data/world_config.json5"):
+    def __init__(self, path: str = None):
+        if path is None:
+            path = str(Path(__file__).resolve().parent.parent / "data" / "world_config.json5")
         self.path = path
         self.config = load_config(path)
         self._validated = False
 
-        self.minecraft_version: str = self.config.get("minecraft_version")
-        self.minecraft_loader: str = self.config.get("minecraft_loader")
-        self.loader_version: str = self.config.get("loader_version")
-        self.chunky_version: str = self.config.get("chunky_version")
+        self.minecraft_version: str = self._clean_str(self.config.get("minecraft_version"))
+        self.minecraft_loader: str = self._clean_str(self.config.get("minecraft_loader"))
+        self.loader_version: str = self._clean_str(self.config.get("loader_version"))
+        self.chunky_version: str = self._clean_str(self.config.get("chunky_version"))
         self.world_name: str = self.config.get("world_name")
         self.dimension: str = self.config.get("dimension") or "overworld"
         self.center: list = self.config.get("center") or [float("nan"), float("nan")]
@@ -71,16 +74,22 @@ class Config:
 
         self._normalize_defaults()
 
+    @staticmethod
+    def _clean_str(value) -> Optional[str]:
+        if value is None:
+            return None
+        if isinstance(value, float) and math.isnan(value):
+            return None
+        return str(value)
+
     def save_config(self) -> None:
         with open(self.path, "w") as f:
             json5.dump(self.to_dict(), f, indent=4)
 
     def _normalize_defaults(self) -> None:
         if (
-            isinstance(self.center[0], int)
-            or isinstance(self.center[0], float)
-            and isinstance(self.center[1], int)
-            or isinstance(self.center[1], float)
+            isinstance(self.center[0], (int, float))
+            and isinstance(self.center[1], (int, float))
         ):
             if math.isnan(self.center[0]) or math.isnan(self.center[1]):
                 self.center = [None, None]
@@ -165,6 +174,7 @@ class Config:
         return self
 
     def to_dict(self) -> dict:
+        mods_zip_path = Path(__file__).resolve().parent.parent / "data" / "mods.zip"
         return {
             "minecraft_version": self.minecraft_version,
             "minecraft_loader": self.minecraft_loader,
@@ -181,6 +191,7 @@ class Config:
             "chunk_format": self.chunk_format,
             "verification": self.verification,
             "use_spawn_as_center": self.use_spawn_as_center,
+            "has_mods_zip": mods_zip_path.exists(),
         }
 
 

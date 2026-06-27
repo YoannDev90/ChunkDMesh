@@ -2,5 +2,9 @@
   fr: {
     submit_tasks_received: "Envoi re\u00e7u pour le lot {batch_id} avec hachages\u00a0: {chunk_hashes}",
     upload_chunks_received: "Donn\u00e9es de morceau re\u00e7ues pour le lot {batch_id}, taille\u00a0: {chunk_size} octets, SHA-256\u00a0: {sha256_hash}",
+    tile_uploaded: "Tuile t\u00e9l\u00e9charg\u00e9e pour le lot {batch_id}, r\u00e9gion\u00a0: {region}, \u00e9chelle\u00a0: {scale}",
+    http_request: "{method} {path} -> {status} ({ms}ms)",
+    tile_served: "Tuile r.{rx}.{rz} s{scale} servie depuis le cache",
+    tile_render_fallback: "Rendu tuile r.{rx}.{rz} s{scale} depuis .mca (fallback)",
   },
 }

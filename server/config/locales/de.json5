@@ -2,5 +2,6 @@
   de: {
     submit_tasks_received: "Einreichung f\u00fcr Batch {batch_id} mit Hashes erhalten: {chunk_hashes}",
     upload_chunks_received: "Empfangene Chunk-Daten f\u00fcr Batch {batch_id}, Gr\u00f6\u00dfe: {chunk_size} Bytes, SHA-256: {sha256_hash}",
+    tile_uploaded: "Kachel hochgeladen f\u00fcr Batch {batch_id}, Region: {region}",
   },
 }
