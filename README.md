@@ -51,34 +51,12 @@ python run.py both
 
 ```mermaid
 flowchart LR
-    subgraph Server["Server (Orchestrator)"]
-        API[FastAPI + SQLite]
-        Tasker[Tasker]
-        Storage[Storage / Dedup]
-        Assembler[Assembler]
-        Exporter[Export .tar.gz]
-        Dashboard[Dashboard / Map]
-    end
-
-    subgraph Client["Client (Worker)"]
-        Java[Java Detector]
-        Assets[Asset Manager]
-        MC[MC Instance + RCON]
-        Upload[Uploader / P2P]
-    end
-
-    Admin[Admin] -->|configure| API
-    API -->|spiral task queue| Tasker
-    Tasker -->|tasks/batch| Client
-    Client -->|upload .mca zstd + sha256| API
-    API -->|validate + dedup| Storage
-    Storage -->|validated regions| Assembler
-    Assembler -->|world dir| Exporter
-    Dashboard -->|API| API
-    Client -->|benchmark score| API
-    Java -->|adoptium api| MC
-    Assets -->|modrinth / loaders| MC
-    MC -->|chunky via RCON| Upload
+    Admin[Admin] -->|config| Server
+    Client[Client Worker] <-->|REST API| Server
+    Server -->|.tar.gz| World[World Export]
+    Client --> Java[Java + Loader + Mods]
+    Java --> MC[Minecraft Server + Chunky]
+    MC --> Client
 ```
 
 ## Flow
