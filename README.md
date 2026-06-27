@@ -9,28 +9,90 @@
  \____/\_| |_/\___/\_| \_/\_| \_/     |___/        \_|  |_/\____/\____/\_| |_/
 ```
 
-A small project aimed at experimenting with the distribution and allocation of "chunks" in a mesh network.
-
-The project is largely based on the official server, which can be downloaded from Mojang, and on the Chunky mod/plugin, which features excellent threading management.
+A distributed platform for Minecraft world pre-generation. Chunks are generated in parallel by volunteer clients and assembled server-side.
 
 ## Requirements
 
-- Python 3.10+ (recommanded)
-- See [`requirements.txt`](/requirements.txt) for dependancies
+- Python 3.10+
+- See [`requirements.txt`](/requirements.txt) for dependencies
 
-## Fast install
+## Install
 
 ```sh
-  python -m venv .venv
-  source .venv/bin/activate
-  pip install -r requirements.txt
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
 ```
 
 ## Usage
 
-- Configure your world, seed, radius, etc in [`server/config/world_config.json5`](/server/config/world_config.json5).
-- Launch the server from [`server/main.py`](/server/main.py).
+### Configure your world
+
+Edit [`server/config/world_config.json5`](/server/config/world_config.json5) with your MC version, loader, seed, radius, etc.
+
+### Launch server
+
+```sh
+python run.py server
+```
+
+Server starts at `http://localhost:8000`.
+
+### Launch client (worker)
+
+```sh
+python run.py client
+```
+
+### Launch both (server + client)
+
+```sh
+python run.py both
+```
+
+### Dashboard
+
+- Admin dashboard: `http://localhost:8000/admin`
+- Interactive map: `http://localhost:8000/admin/map`
+- API docs: `http://localhost:8000/docs`
+
+## Architecture
+
+```
+┌──────────────┐     REST API      ┌──────────────────┐
+│   Server     │◄──────────────────│    Client(s)     │
+│ (Orchestrator)│                   │   (Workers)      │
+│              │                   │                  │
+│  - FastAPI   │   tasks/batch     │  - Java detector │
+│  - SQLite    │──────────────────►│  - Asset manager │
+│  - Tasker    │   upload/submit   │  - MC instance   │
+│  - Assembler │◄──────────────────│  - RCON/Chunky   │
+│  - Dashboard │                   │  - Uploader      │
+└──────────────┘                   └──────────────────┘
+```
+
+### Flow
+
+1. Admin configures the world (seed, radius, shape)
+2. Server splits the zone into region tasks (32×32 chunks each)
+3. Clients connect, get a batch of regions
+4. Each client installs Java + loader + mods, launches MC headless
+5. Chunky generates chunks via RCON commands
+6. Clients upload `.mca` files (compressed Zstd) + SHA-256 hashes
+7. Server validates hashes, optionally requires double-check
+8. Assembler gathers validated regions into final world
+9. Export as `.tar.gz` ready to use
+
+## Features
+
+- **Multi-loader**: Fabric, Forge, Quilt, NeoForge
+- **Verification**: Optional double-generation for integrity
+- **S3/R2**: Ephemeral storage for cloud deployments (Render, Vercel)
+- **P2P**: BitTorrent distribution for mods.zip
+- **Heatmap**: Real-time interactive map of generation progress
+- **Benchmark**: Client speed scoring for task prioritization
+- **i18n**: Multi-language logging (EN, FR, ES, DE)
 
 ## Licence
 
-This project is provided under Apache v2.0 License, see [`LICENSE`](/LICENSE).
+Apache v2.0 — see [`LICENSE`](/LICENSE)
