@@ -210,26 +210,79 @@ async def get_chunky_version(
         response.raise_for_status()
         data = response.json()
 
-        for release in data:
-            version_data = release.get("version_number")
-            if version != None:
+        if version is not None:
+            for release in data:
+                version_data = release.get("version_number", "")
                 if version in version_data:
-                    id = release.get("id")
-                    return id
-
-            else:
-                versions = {
-                    release.get("id"): release.get("downloads") for release in data
-                }
-                sorted_versions = sorted(
-                    versions.items(), key=lambda item: item[1], reverse=True
-                )
-                return sorted_versions[0][0] if sorted_versions else None
-
-        return None
+                    return release.get("id")
+            return None
+        else:
+            if not data:
+                return None
+            versions = {
+                release.get("id"): release.get("downloads", 0) for release in data
+            }
+            sorted_versions = sorted(
+                versions.items(), key=lambda item: item[1], reverse=True
+            )
+            return sorted_versions[0][0] if sorted_versions else None
 
     except httpx.HTTPError as e:
-        raise RuntimeError(f"Error connecting to GitHub API: {e}")
+        raise RuntimeError(f"Error connecting to Modrinth API: {e}")
+
+
+FABRIC_API_PROJECT_ID = "P7dR8mSH"
+
+CHUNKY_MODRINTH_PROJECT_ID = "fALzjamp"
+
+
+async def get_modrinth_download(
+    project_id: str, version: str, loader: str, minecraft_version: str
+) -> Optional[dict]:
+    """
+    Get download info for a Modrinth project version.
+    Returns {"url": ..., "filename": ..., "size": ...} or None.
+    """
+    url = f"https://api.modrinth.com/v2/project/{project_id}/version"
+    params = {}
+    if loader:
+        params["loaders"] = f'["{loader}"]'
+    if minecraft_version:
+        params["game_versions"] = f'["{minecraft_version}"]'
+
+    try:
+        response = await http_client.get(url, params=params)
+        response.raise_for_status()
+        data = response.json()
+
+        for release in data:
+            if version and version in release.get("version_number", ""):
+                files = release.get("files", [])
+                if files:
+                    f = files[0]
+                    return {"url": f["url"], "filename": f["filename"], "size": f.get("size", 0)}
+
+        if data:
+            files = data[0].get("files", [])
+            if files:
+                f = files[0]
+                return {"url": f["url"], "filename": f["filename"], "size": f.get("size", 0)}
+
+        return None
+    except httpx.HTTPError:
+        return None
+
+
+async def get_chunky_download(loader: str, minecraft_version: str, chunky_version: str) -> Optional[dict]:
+    return await get_modrinth_download(
+        CHUNKY_MODRINTH_PROJECT_ID, chunky_version, loader, minecraft_version
+    )
+
+
+async def get_fabric_api_download(minecraft_version: str) -> Optional[dict]:
+    return await get_modrinth_download(
+        FABRIC_API_PROJECT_ID, "", "fabric", minecraft_version
+    )
 
 
 async def get_loader_version(
@@ -240,7 +293,7 @@ async def get_loader_version(
     elif loader == "fabric":
         return await get_fabric_versions(minecraft_version)
     elif loader == "quilt":
-        return await get_quilt_versions(minecraft_version)
+        return await get_quilt_versions()
     elif loader == "neoforge":
         return await get_neoforge_versions(minecraft_version)
     else:
