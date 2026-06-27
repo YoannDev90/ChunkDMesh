@@ -1,6 +1,8 @@
 import datetime
 import logging
 import logging.config
+import os
+from pathlib import Path
 from typing import Optional
 
 import json5
@@ -15,6 +17,7 @@ _translations = {}
 
 
 class ColoredFormatter(logging.Formatter):
+    babel_locale = None
     LEVEL_COLORS = {
         logging.DEBUG: Fore.CYAN,
         logging.INFO: Fore.GREEN,
@@ -27,12 +30,11 @@ class ColoredFormatter(logging.Formatter):
         self, fmt=None, datefmt=None, style="%", validate=True, *, defaults=None
     ):
         super().__init__(fmt, datefmt, style, validate, defaults=defaults)
-        self.babel_locale = None
 
     def formatTime(self, record, datefmt=None):
-        """Override pour formater le temps avec Babel selon la locale"""
+        locale = self.babel_locale or _babel_locale
         dt = datetime.datetime.fromtimestamp(record.created)
-        return format_datetime(dt, format="medium", locale=self.babel_locale)
+        return format_datetime(dt, format="medium", locale=locale)
 
     def format(self, record: logging.LogRecord) -> str:
         color = self.LEVEL_COLORS.get(record.levelno, "")
@@ -45,7 +47,12 @@ class ColoredFormatter(logging.Formatter):
             record.levelname = levelname
 
 
-def load_logging_config(path="server/config/logging_config.json5"):
+_BASE_DIR = Path(__file__).resolve().parent
+
+
+def load_logging_config(path=None):
+    if path is None:
+        path = str(_BASE_DIR / "config" / "logging_config.json5")
     with open(path, "r") as f:
         config = json5.load(f)
     lib_config = config.get("logging_lib_config")
@@ -53,9 +60,10 @@ def load_logging_config(path="server/config/logging_config.json5"):
     return lib_config, locale_config
 
 
-def load_translations(path="server/config/locales"):
+def load_translations(path=None):
     global _translations
-    import os
+    if path is None:
+        path = str(_BASE_DIR / "config" / "locales")
 
     for lang_file in os.listdir(path):
         if lang_file.endswith(".json5"):
