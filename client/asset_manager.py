@@ -174,8 +174,6 @@ class AssetManager:
 
         return server_dir
 
-        return server_dir
-
     def get_server_jar(self, mc_version: str, loader: str, loader_version: str) -> Path:
         server_dir = self.work_dir / "server"
         server_dir.mkdir(parents=True, exist_ok=True)
