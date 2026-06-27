@@ -49,9 +49,24 @@ class SupportedLoaders:
 
 
 class Config:
-    def __init__(self, path: str = None):
+    _instances: dict[str, 'Config'] = {}
+    _initialized: set[str] = set()
+
+    def __new__(cls, path: str | None = None):
         if path is None:
             path = str(Path(__file__).resolve().parent.parent / "data" / "world_config.json5")
+        if path in cls._instances:
+            return cls._instances[path]
+        instance = super().__new__(cls)
+        cls._instances[path] = instance
+        return instance
+
+    def __init__(self, path: str | None = None):
+        if path is None:
+            path = str(Path(__file__).resolve().parent.parent / "data" / "world_config.json5")
+        if path in self._initialized:
+            return
+        self._initialized.add(path)
         self.path = path
         self.config = load_config(path)
         self._validated = False
