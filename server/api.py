@@ -15,25 +15,39 @@
 import asyncio
 import datetime
 import hashlib
+import io
 import logging
 import math
 import os
+import secrets
+import time as _time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Dict, Generator, Optional
 
 import uvicorn
 import zstd
+from PIL import Image
+from assembler import RegionAssembler
 from config import Config
-from db import Batch, Client, get_db_session
+from db import Batch, Client, Validation, get_db_session
+from exporter import ExportManager
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from jwt import PyJWTError, decode, encode
+from map_renderer import (CACHE_DIR, STORAGE_DIR, _HAS_RUST_TILER,
+                          cached_region_path, render_region_tile_cached,
+                          render_world_map)
+from p2p_server import create_torrent
 from pydantic import BaseModel
-
-logger = logging.getLogger(__name__)
+from s3_storage import create_storage_from_env
 from sqlalchemy import select
 from storage_manager import ChunkStorage
+from tasker import attribute_tasks_to_client
+from version import CLIENT_VERSION
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="ChunkDMesh Orchestrator", version="0.1.0"
@@ -45,7 +59,6 @@ templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 @app.middleware("http")
 async def access_log_middleware(request: Request, call_next):
-    import time as _time
     t0 = _time.monotonic()
     resp = await call_next(request)
     elapsed_ms = (_time.monotonic() - t0) * 1000
@@ -55,8 +68,7 @@ async def access_log_middleware(request: Request, call_next):
 
 
 async def run_api():
-    import logging as _logging
-    root_logger = _logging.getLogger()
+    root_logger = logging.getLogger()
 
     config = uvicorn.Config(
         app, host="0.0.0.0", port=8000, log_level="info",
@@ -66,7 +78,7 @@ async def run_api():
 
     # Route uvicorn loggers through our formatter
     for name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
-        _uvlog = _logging.getLogger(name)
+        _uvlog = logging.getLogger(name)
         _uvlog.handlers = root_logger.handlers[:]
         _uvlog.setLevel(root_logger.level)
         _uvlog.propagate = False
@@ -79,7 +91,6 @@ def get_secret_key():
     if key_path.exists():
         return key_path.read_text().strip()
     
-    import secrets
     key = secrets.token_hex(64)
     key_path.parent.mkdir(parents=True, exist_ok=True)
     key_path.write_text(key)
@@ -208,8 +219,6 @@ async def get_mods(request: Request, token_data: dict = Depends(verify_token)):
 
 @app.get("/assets/config.json")
 async def get_config(request: Request, token_data: dict = Depends(verify_token)):
-    from config import Config
-
     config = Config()
     await config.validate()
     config_dict = config.to_dict()
@@ -218,7 +227,6 @@ async def get_config(request: Request, token_data: dict = Depends(verify_token))
 
 @app.get("/tasks/batch")
 async def get_batch(request: Request, token_data: dict = Depends(verify_token)):
-    from tasker import attribute_tasks_to_client
     client_id = token_data.get("client_id")
     if not client_id:
         raise HTTPException(status_code=400, detail="Invalid token payload")
@@ -248,7 +256,6 @@ async def submit_tasks(submit_tasks_request: SubmitTasksRequest, request: Reques
         # Use cached hash from validation table if available
         cached_hash = None
         async with get_db_session() as session:
-            from db import Validation
             v_result = await session.execute(
                 select(Validation).where(
                     Validation.batch_id == batch_id,
@@ -294,7 +301,6 @@ async def submit_tasks(submit_tasks_request: SubmitTasksRequest, request: Reques
 
         batch.status = "completed" if all_valid else "hash_error"
 
-        from config import Config
         config = Config()
 
         if config.verification and all_valid:
@@ -338,7 +344,6 @@ async def submit_tasks(submit_tasks_request: SubmitTasksRequest, request: Reques
         await session.commit()
 
     if all_valid:
-        from s3_storage import create_storage_from_env
         s3 = create_storage_from_env()
         if s3:
             try:
@@ -373,10 +378,8 @@ async def upload_chunks(
         # Cache hash in DB for later verification (avoid re-read)
         async with get_db_session() as session:
             # Store hash in validation table immediately
-            from db import Validation
-            from sqlalchemy import select as sa_select
             existing = await session.execute(
-                sa_select(Validation).where(
+                select(Validation).where(
                     Validation.batch_id == batch_id,
                     Validation.file_hash == sha256_hash,
                 )
@@ -413,7 +416,6 @@ async def upload_chunks(
 
 @app.put("/tasks/upload/tile/{batch_id}")
 async def upload_tile(batch_id: int, request: Request, token_data: dict = Depends(verify_token)):
-    from map_renderer import CACHE_DIR
     png_data = await request.body()
     filename = request.headers.get("X-Filename", "")
     scale_header = request.headers.get("X-Scale", "1")
@@ -456,7 +458,6 @@ async def get_heatmap(request: Request):
 @app.get("/admin/map/regions")
 async def get_map_regions(request: Request):
     """Return list of regions that have .mca files in storage (for map rendering)."""
-    from pathlib import Path
     STORAGE_DIR = Path(__file__).resolve().parent.parent / "data" / "storage"
 
     regions = []
@@ -481,9 +482,6 @@ async def get_map_regions(request: Request):
     return JSONResponse({"regions": unique_regions})
 
 
-CLIENT_VERSION = "0.1.0"
-
-
 @app.get("/client/version")
 async def get_client_version(request: Request):
     return JSONResponse({
@@ -502,9 +500,6 @@ async def download_client(request: Request):
 
 @app.get("/admin/stats")
 async def admin_stats(request: Request):
-    from storage_manager import ChunkStorage
-    from map_renderer import _HAS_RUST_TILER, CACHE_DIR
-
     storage = ChunkStorage()
     batches = storage.list_batches()
 
@@ -554,9 +549,6 @@ async def admin_stats(request: Request):
 
 @app.post("/admin/assemble")
 async def assemble_world(request: Request):
-    from config import Config
-    from assembler import RegionAssembler
-
     config = Config()
     assembler = RegionAssembler(config.world_name)
     result = await assembler.assemble()
@@ -564,7 +556,6 @@ async def assemble_world(request: Request):
 
     # Auto-cleanup: remove batch storage dirs after successful assembly
     if result.get("assembled", 0) > 0:
-        from storage_manager import ChunkStorage
         storage_cleanup = ChunkStorage().cleanup_after_assembly()
         result["storage_cleanup"] = storage_cleanup
 
@@ -573,9 +564,6 @@ async def assemble_world(request: Request):
 
 @app.get("/admin/progress")
 async def get_progress(request: Request):
-    from config import Config
-    from assembler import RegionAssembler
-
     config = Config()
     assembler = RegionAssembler(config.world_name)
     progress = assembler.get_progress()
@@ -598,9 +586,6 @@ async def get_progress(request: Request):
 
 @app.post("/admin/export")
 async def export_world(request: Request):
-    from config import Config
-    from exporter import ExportManager
-
     config = Config()
     manager = ExportManager(config.world_name)
 
@@ -617,9 +602,6 @@ async def export_world(request: Request):
 
 @app.get("/admin/archives")
 async def list_archives(request: Request):
-    from config import Config
-    from exporter import ExportManager
-
     config = Config()
     manager = ExportManager(config.world_name)
     archives = manager.list_archives()
@@ -634,9 +616,6 @@ async def create_mods_torrent(request: Request):
         raise HTTPException(status_code=404, detail="mods.zip not found")
 
     try:
-        from s3_storage import create_storage_from_env
-        from p2p_server import create_torrent
-
         torrent_path = create_torrent(zip_path)
 
         storage = create_storage_from_env()
@@ -656,9 +635,6 @@ async def create_mods_torrent(request: Request):
 
 @app.get("/admin/download/{filename}")
 async def download_archive(filename: str, request: Request, token_data: dict = Depends(verify_token)):
-    from config import Config
-    from exporter import ExportManager
-
     config = Config()
     manager = ExportManager(config.world_name)
     archive_path = manager.exports_dir / filename
@@ -685,9 +661,6 @@ async def map_view(request: Request):
 
 @app.get("/admin/progress/html")
 async def get_progress_partial(request: Request):
-    from config import Config
-    from assembler import RegionAssembler
-
     config = Config()
     assembler = RegionAssembler(config.world_name)
     progress = assembler.get_progress()
@@ -745,9 +718,6 @@ async def get_heatmap_partial(request: Request):
 
 @app.get("/admin/map/render/{rx}/{rz}")
 async def render_region_tile(rx: int, rz: int, request: Request, scale: int = 1):
-    from map_renderer import (render_region_tile_cached,
-                              STORAGE_DIR, cached_region_path)
-
     cache_path = cached_region_path(rx, rz, scale)
     if cache_path.exists():
         logger.info("tile served from cache: %s,%s s=%s", rx, rz, scale)
@@ -756,7 +726,6 @@ async def render_region_tile(rx: int, rz: int, request: Request, scale: int = 1)
     if scale not in (1, 16):
         hi_cache = cached_region_path(rx, rz, 16)
         if hi_cache.exists():
-            from PIL import Image
             img = Image.open(hi_cache)
             img = img.resize((512 * scale, 512 * scale), Image.LANCZOS)
             img.save(cache_path)
@@ -765,7 +734,6 @@ async def render_region_tile(rx: int, rz: int, request: Request, scale: int = 1)
 
         lo_cache = cached_region_path(rx, rz, 1)
         if lo_cache.exists():
-            from PIL import Image
             img = Image.open(lo_cache)
             img = img.resize((512 * scale, 512 * scale), Image.NEAREST)
             img.save(cache_path)
@@ -787,10 +755,9 @@ async def render_region_tile(rx: int, rz: int, request: Request, scale: int = 1)
 
     _RENDER_POOL = getattr(app.state, "_render_pool", None)
     if _RENDER_POOL is None:
-        from concurrent.futures import ThreadPoolExecutor
         _RENDER_POOL = ThreadPoolExecutor(max_workers=2)
         app.state._render_pool = _RENDER_POOL
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     result = await loop.run_in_executor(
         _RENDER_POOL, render_region_tile_cached, mca_path, rx, rz, 1
     )
@@ -798,7 +765,6 @@ async def render_region_tile(rx: int, rz: int, request: Request, scale: int = 1)
         return JSONResponse({"error": "Failed to render region"}, status_code=500)
 
     if scale > 1:
-        from PIL import Image
         img = Image.open(result)
         new_size = (512 * scale, 512 * scale)
         img = img.resize(new_size, Image.NEAREST)
@@ -811,11 +777,7 @@ async def render_region_tile(rx: int, rz: int, request: Request, scale: int = 1)
 
 @app.get("/admin/map/render/world")
 async def render_world_map(request: Request, scale: int = 1):
-    from map_renderer import render_world_map
-    import io
-    from concurrent.futures import ThreadPoolExecutor
-
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     img = await loop.run_in_executor(ThreadPoolExecutor(), render_world_map, STORAGE_DIR, scale)
     buf = io.BytesIO()
     img.save(buf, format="PNG")
@@ -824,6 +786,4 @@ async def render_world_map(request: Request, scale: int = 1):
 
 
 if __name__ == "__main__":
-    import uvicorn
-
     uvicorn.run(app)
