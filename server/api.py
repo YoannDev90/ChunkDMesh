@@ -29,8 +29,9 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from jwt import PyJWTError, decode, encode
-from logging_utils import ulog
 from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
 from sqlalchemy import select
 from storage_manager import ChunkStorage
 
@@ -48,9 +49,8 @@ async def access_log_middleware(request: Request, call_next):
     t0 = _time.monotonic()
     resp = await call_next(request)
     elapsed_ms = (_time.monotonic() - t0) * 1000
-    ulog(logging.INFO, "http_request",
-         method=request.method, path=str(request.url.path),
-         status=resp.status_code, ms=f"{elapsed_ms:.0f}")
+    logger.info("%s %s -> %s (%sms)", request.method, request.url.path,
+                resp.status_code, f"{elapsed_ms:.0f}")
     return resp
 
 
@@ -186,8 +186,7 @@ async def submit_benchmark(req: BenchmarkRequest, request: Request, token_data: 
             client.benchmark_score = score
             await session.commit()
 
-    ulog(logging.INFO, "benchmark_submitted",
-         client_id=client_id, chunks_per_second=score)
+    logger.info("benchmark submitted: client=%s chunks/s=%.2f", client_id, score)
 
     return JSONResponse({
         "status": "accepted",
@@ -282,13 +281,7 @@ async def submit_tasks(submit_tasks_request: SubmitTasksRequest, request: Reques
     total_count = len(results)
     all_valid = valid_count == total_count
 
-    ulog(
-        logging.INFO,
-        "hash_validation_completed",
-        batch_id=batch_id,
-        valid=valid_count,
-        total=total_count,
-    )
+    logger.info("hash validation: batch=%s valid=%s/%s", batch_id, valid_count, total_count)
 
     async with get_db_session() as session:
         batch_result = await session.execute(
@@ -329,15 +322,15 @@ async def submit_tasks(submit_tasks_request: SubmitTasksRequest, request: Reques
                 if match:
                     batch.status = "validated"
                     other_batch.status = "validated"
-                    ulog(logging.INFO, "batch_validated_by_redundancy",
-                         batch_id=batch_id, other_batch_id=other_batch.id)
+                    logger.info("batch validated by redundancy: batch=%s other=%s",
+                                batch_id, other_batch.id)
                 else:
                     batch.status = "hash_error"
                     other_batch.status = "hash_error"
                     batch.retry_count += 1
                     other_batch.retry_count += 1
-                    ulog(logging.WARNING, "redundancy_mismatch",
-                         batch_id=batch_id, other_batch_id=other_batch.id)
+                    logger.warning("redundancy mismatch: batch=%s other=%s",
+                                  batch_id, other_batch.id)
 
             elif batch.status == "completed":
                 pass
@@ -351,10 +344,9 @@ async def submit_tasks(submit_tasks_request: SubmitTasksRequest, request: Reques
             try:
                 batch_dir = STORAGE_DIR / str(batch_id)
                 s3.upload_batch(batch_dir, batch_id)
-                ulog(logging.INFO, "batch_uploaded_s3", batch_id=batch_id)
+                logger.info("batch uploaded to S3: batch=%s", batch_id)
             except Exception as e:
-                ulog(logging.ERROR, "batch_upload_s3_failed",
-                     batch_id=batch_id, error=str(e))
+                logger.error("S3 upload failed: batch=%s error=%s", batch_id, e)
 
     return JSONResponse({
         "status": batch.status,
@@ -406,15 +398,8 @@ async def upload_chunks(
                 batch.status = "working"
             await session.commit()
 
-        ulog(
-            logging.INFO,
-            "upload_chunks_received",
-            batch_id=batch_id,
-            filename=filename,
-            sha256_hash=sha256_hash,
-            raw_size=raw_size,
-            compressed_size=len(chunk_data),
-        )
+        logger.info("upload received: batch=%s file=%s hash=%s raw=%s compressed=%s",
+                    batch_id, filename, sha256_hash, raw_size, len(chunk_data))
 
         return JSONResponse({
             "status": "received",
@@ -449,7 +434,7 @@ async def upload_tile(batch_id: int, request: Request, token_data: dict = Depend
     with open(out, "wb") as f:
         f.write(png_data)
 
-    ulog(logging.INFO, "tile_uploaded", batch_id=batch_id, region=f"{rx},{rz}", scale=scale)
+    logger.info("tile uploaded: batch=%s region=%s,%s scale=%s", batch_id, rx, rz, scale)
     return JSONResponse({"status": "ok", "region": {"rx": rx, "rz": rz}, "scale": scale})
 
 
@@ -765,7 +750,7 @@ async def render_region_tile(rx: int, rz: int, request: Request, scale: int = 1)
 
     cache_path = cached_region_path(rx, rz, scale)
     if cache_path.exists():
-        ulog(logging.INFO, "tile_served", rx=rx, rz=rz, scale=scale)
+        logger.info("tile served from cache: %s,%s s=%s", rx, rz, scale)
         return FileResponse(str(cache_path), media_type="image/png")
 
     if scale not in (1, 16):
@@ -775,7 +760,7 @@ async def render_region_tile(rx: int, rz: int, request: Request, scale: int = 1)
             img = Image.open(hi_cache)
             img = img.resize((512 * scale, 512 * scale), Image.LANCZOS)
             img.save(cache_path)
-            ulog(logging.INFO, "tile_served", rx=rx, rz=rz, scale=scale)
+            logger.info("tile served from hi-cache: %s,%s s=%s", rx, rz, scale)
             return FileResponse(str(cache_path), media_type="image/png")
 
         lo_cache = cached_region_path(rx, rz, 1)
@@ -784,10 +769,10 @@ async def render_region_tile(rx: int, rz: int, request: Request, scale: int = 1)
             img = Image.open(lo_cache)
             img = img.resize((512 * scale, 512 * scale), Image.NEAREST)
             img.save(cache_path)
-            ulog(logging.INFO, "tile_served", rx=rx, rz=rz, scale=scale)
+            logger.info("tile served from lo-cache scaled: %s,%s s=%s", rx, rz, scale)
             return FileResponse(str(cache_path), media_type="image/png")
 
-    ulog(logging.WARNING, "tile_render_fallback", rx=rx, rz=rz, scale=scale)
+    logger.warning("tile render fallback: %s,%s s=%s", rx, rz, scale)
 
     mca_path = None
     if STORAGE_DIR.exists():
