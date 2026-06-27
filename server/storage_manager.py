@@ -125,15 +125,16 @@ class ChunkStorage:
         if not blob_dir.exists():
             return {"removed": 0, "freed_mb": 0.0}
 
-        # Collect all referenced hashes
+        # Collect all referenced hashes (filenames ARE the hashes via hardlinks)
         referenced: set[str] = set()
         for bid in self.list_batches():
             for f in self.batch_dir(bid).iterdir():
                 if f.is_file() and not f.name.startswith("."):
                     try:
-                        stats = f.stat()
-                        if stats.st_nlink > 1 or True:
-                            referenced.add(hashlib.sha256(f.read_bytes()).hexdigest())
+                        if f.stat().st_nlink > 1:
+                            blob_hash = f.resolve().name
+                            if len(blob_hash) == 64:
+                                referenced.add(blob_hash)
                     except Exception:
                         pass
 
