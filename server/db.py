@@ -18,7 +18,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import (Mapped, declarative_base, mapped_column,
                             relationship, sessionmaker)
 
-DATABASE_URL = "sqlite+aiosqlite:///./data/chunkdmesh.db"
+from pathlib import Path
+
+_DB_DIR = Path(__file__).resolve().parent.parent / "data"
+_DB_DIR.mkdir(parents=True, exist_ok=True)
+DATABASE_URL = f"sqlite+aiosqlite:///{_DB_DIR / 'chunkdmesh.db'}"
 
 Base = declarative_base()
 
@@ -30,6 +34,7 @@ class Client(Base):
     token: Mapped[Optional[str]] = mapped_column(String(128), unique=True)
     ip: Mapped[Optional[str]] = mapped_column(String(45))
     power_score: Mapped[Optional[float]] = mapped_column()
+    benchmark_score: Mapped[Optional[float]] = mapped_column()
     last_seen: Mapped[Optional[datetime]] = mapped_column(DateTime)
 
     batches: Mapped[List["Batch"]] = relationship("Batch", back_populates="client")
@@ -101,16 +106,30 @@ AsyncSessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=F
 
 
 async def init_db() -> None:
-    """Create database tables.
-
-    Example:
-            import asyncio
-            from server.db import init_db
-
-            asyncio.run(init_db())
-    """
+    """Create database tables with WAL mode + indexes."""
     async with engine.begin() as conn:
+        # Optimize SQLite for concurrent read/write
+        await conn.exec_driver_sql("PRAGMA journal_mode=WAL")
+        await conn.exec_driver_sql("PRAGMA synchronous=NORMAL")
+        await conn.exec_driver_sql("PRAGMA cache_size=-64000")  # 64 MB cache
+        await conn.exec_driver_sql("PRAGMA busy_timeout=5000")
+        await conn.exec_driver_sql("PRAGMA foreign_keys=ON")
+
         await conn.run_sync(Base.metadata.create_all)
+
+        # Indexes for frequent queries
+        await conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS idx_batches_region ON batches(region_x, region_z)"
+        )
+        await conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS idx_batches_status ON batches(status)"
+        )
+        await conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS idx_batches_assigned ON batches(assigned_to)"
+        )
+        await conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS idx_clients_token ON clients(token)"
+        )
 
 
 def get_db_session() -> AsyncSession:
