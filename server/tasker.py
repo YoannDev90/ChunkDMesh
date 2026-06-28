@@ -115,6 +115,7 @@ async def attribute_tasks_to_client(client_id: int):
     SIZE = 1  # One region at a time for immediate upload
 
     config = Config()
+    await config.validate()
     verification = config.verification
     max_assign = MAX_ASSIGNMENTS if verification else 1
 

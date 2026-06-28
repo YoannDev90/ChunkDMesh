@@ -15,19 +15,16 @@
 import asyncio
 import datetime
 import hashlib
-import io
 import logging
 import math
 import os
 import secrets
 import time as _time
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Dict, Generator, Optional
 
 import uvicorn
 import zstd
-from PIL import Image
 from assembler import RegionAssembler
 from config import Config
 from db import Batch, Client, Validation, get_db_session
@@ -36,24 +33,23 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from jwt import PyJWTError, decode, encode
-from map_renderer import (CACHE_DIR, STORAGE_DIR, _HAS_RUST_TILER,
-                          cached_region_path, render_region_tile_cached,
-                          render_world_map)
 from p2p_server import create_torrent
 from pydantic import BaseModel
 from s3_storage import create_storage_from_env
 from sqlalchemy import select
-from storage_manager import ChunkStorage
+from storage_manager import ChunkStorage, STORAGE_DIR
 from tasker import attribute_tasks_to_client
-from version import CLIENT_VERSION
-
 logger = logging.getLogger(__name__)
+
+_SRV = Path(__file__).resolve().parent
+_ROOT = _SRV.parent
+_DATA = _ROOT / "data"
 
 app = FastAPI(
     title="ChunkDMesh Orchestrator", version="0.1.0"
 )
-FAVICON_PATH = Path(__file__).resolve().parent / "config" / "favicon.ico"
-TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
+FAVICON_PATH = _SRV / "config" / "favicon.ico"
+TEMPLATES_DIR = _SRV / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 
@@ -68,10 +64,14 @@ async def access_log_middleware(request: Request, call_next):
 
 
 async def run_api():
+    import os
     root_logger = logging.getLogger()
 
+    host = os.environ.get("CHUNKMESH_HOST", "0.0.0.0")
+    port = int(os.environ.get("CHUNKMESH_PORT", "8000"))
+
     config = uvicorn.Config(
-        app, host="0.0.0.0", port=8000, log_level="info",
+        app, host=host, port=port, log_level="info",
         log_config=None, access_log=False,
     )
     server = uvicorn.Server(config)
@@ -87,7 +87,7 @@ async def run_api():
 
 
 def get_secret_key():
-    key_path = Path(__file__).resolve().parent / "config" / "key.pem"
+    key_path = _SRV / "config" / "key.pem"
     if key_path.exists():
         return key_path.read_text().strip()
     
@@ -207,7 +207,7 @@ async def submit_benchmark(req: BenchmarkRequest, request: Request, token_data: 
 
 @app.get("/assets/mods.zip")
 async def get_mods(request: Request, token_data: dict = Depends(verify_token)):
-    zip_path = "data/mods.zip"
+    zip_path = str(_DATA / "mods.zip")
     if not os.path.exists(zip_path):
         raise HTTPException(status_code=404, detail="Mods not found")
     filename = os.path.basename(zip_path)
@@ -239,9 +239,6 @@ async def get_batch(request: Request, token_data: dict = Depends(verify_token)):
         "regions": [{"region_x": rx, "region_z": rz} for rx, rz in region_coords],
     }
     return JSONResponse(batch)
-
-
-STORAGE_DIR = Path(__file__).resolve().parent.parent / "data" / "storage"
 
 
 @app.post("/tasks/submit")
@@ -364,6 +361,9 @@ async def submit_tasks(submit_tasks_request: SubmitTasksRequest, request: Reques
 async def upload_chunks(
     batch_id: int, request: Request, token_data: dict = Depends(verify_token)
 ):
+    client_id = token_data.get("client_id")
+    if not client_id:
+        raise HTTPException(status_code=400, detail="Invalid token payload")
     chunk_data = await request.body()
     try:
         decompressed_data = zstd.decompress(chunk_data)
@@ -387,7 +387,7 @@ async def upload_chunks(
             if not existing.scalar_one_or_none():
                 validation = Validation(
                     batch_id=batch_id,
-                    client_id=0,  # Unknown at upload time
+                    client_id=client_id,
                     file_hash=sha256_hash,
                     storage_path=f"{batch_id}/{filename}",
                 )
@@ -411,33 +411,8 @@ async def upload_chunks(
             "hash": sha256_hash,
         })
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Decompression failed: {str(e)}")
-
-
-@app.put("/tasks/upload/tile/{batch_id}")
-async def upload_tile(batch_id: int, request: Request, token_data: dict = Depends(verify_token)):
-    png_data = await request.body()
-    filename = request.headers.get("X-Filename", "")
-    scale_header = request.headers.get("X-Scale", "1")
-    try:
-        scale = int(scale_header)
-    except ValueError:
-        scale = 1
-
-    if not filename.endswith(".png"):
-        raise HTTPException(status_code=400, detail="Filename must end with .png")
-    parts = filename.replace(".png", "").split(".")
-    if len(parts) != 3 or parts[0] != "r":
-        raise HTTPException(status_code=400, detail="Filename must be r.{rx}.{rz}.png")
-    rx, rz = int(parts[1]), int(parts[2])
-
-    CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    out = CACHE_DIR / f"r.{rx}.{rz}.s{scale}.png"
-    with open(out, "wb") as f:
-        f.write(png_data)
-
-    logger.info("tile uploaded: batch=%s region=%s,%s scale=%s", batch_id, rx, rz, scale)
-    return JSONResponse({"status": "ok", "region": {"rx": rx, "rz": rz}, "scale": scale})
+        logger.error("upload failed: batch=%s error=%s", batch_id, e)
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.get("/admin/heatmap")
@@ -455,44 +430,9 @@ async def get_heatmap(request: Request):
     return JSONResponse({"regions": heatmap})
 
 
-@app.get("/admin/map/regions")
-async def get_map_regions(request: Request):
-    """Return list of regions that have .mca files in storage (for map rendering)."""
-    STORAGE_DIR = Path(__file__).resolve().parent.parent / "data" / "storage"
-
-    regions = []
-    if STORAGE_DIR.exists():
-        for bdir in sorted(STORAGE_DIR.iterdir(), key=lambda p: int(p.name)):
-            if bdir.is_dir():
-                for mca in bdir.glob("r.*.*.mca"):
-                    parts = mca.stem.split(".")
-                    if len(parts) == 3:
-                        rx, rz = int(parts[1]), int(parts[2])
-                        regions.append({"region_x": rx, "region_z": rz, "status": "available"})
-
-    # Remove duplicates (same region in multiple batches)
-    seen = set()
-    unique_regions = []
-    for r in regions:
-        key = (r["region_x"], r["region_z"])
-        if key not in seen:
-            seen.add(key)
-            unique_regions.append(r)
-
-    return JSONResponse({"regions": unique_regions})
-
-
-@app.get("/client/version")
-async def get_client_version(request: Request):
-    return JSONResponse({
-        "version": CLIENT_VERSION,
-        "download_url": "/client/download",
-    })
-
-
 @app.get("/client/download")
 async def download_client(request: Request):
-    client_archive = Path(__file__).resolve().parent.parent / "client" / "chunkdmesh_client.tar.gz"
+    client_archive = _ROOT / "client" / "chunkdmesh_client.tar.gz"
     if not client_archive.exists():
         raise HTTPException(status_code=404, detail="Client archive not found")
     return FileResponse(client_archive, filename="chunkdmesh_client.tar.gz")
@@ -519,13 +459,6 @@ async def admin_stats(request: Request):
     for s in statuses:
         status_counts[s] = status_counts.get(s, 0) + 1
 
-    cache_size_mb = 0.0
-    cache_count = 0
-    if CACHE_DIR.exists():
-        cache_files = list(CACHE_DIR.iterdir())
-        cache_count = len(cache_files)
-        cache_size_mb = round(sum(f.stat().st_size for f in cache_files) / (1024 * 1024), 1)
-
     return JSONResponse({
         "storage": {
             "batch_dirs": len(batches),
@@ -537,18 +470,11 @@ async def admin_stats(request: Request):
             "total_batches": len(statuses),
             "by_status": status_counts,
         },
-        "map_cache": {
-            "files": cache_count,
-            "size_mb": cache_size_mb,
-        },
-        "features": {
-            "rust_tiler": _HAS_RUST_TILER,
-        },
     })
 
 
 @app.post("/admin/assemble")
-async def assemble_world(request: Request):
+async def assemble_world(request: Request, token_data: dict = Depends(verify_token)):
     config = Config()
     assembler = RegionAssembler(config.world_name)
     result = await assembler.assemble()
@@ -585,7 +511,7 @@ async def get_progress(request: Request):
 
 
 @app.post("/admin/export")
-async def export_world(request: Request):
+async def export_world(request: Request, token_data: dict = Depends(verify_token)):
     config = Config()
     manager = ExportManager(config.world_name)
 
@@ -610,8 +536,8 @@ async def list_archives(request: Request):
 
 
 @app.post("/admin/torrent")
-async def create_mods_torrent(request: Request):
-    zip_path = Path("data/mods.zip")
+async def create_mods_torrent(request: Request, token_data: dict = Depends(verify_token)):
+    zip_path = _DATA / "mods.zip"
     if not zip_path.exists():
         raise HTTPException(status_code=404, detail="mods.zip not found")
 
@@ -652,11 +578,6 @@ async def download_archive(filename: str, request: Request, token_data: dict = D
 @app.get("/admin", response_class=HTMLResponse)
 async def dashboard(request: Request):
     return templates.TemplateResponse(request, "dashboard.html")
-
-
-@app.get("/admin/map", response_class=HTMLResponse)
-async def map_view(request: Request):
-    return templates.TemplateResponse(request, "map.html")
 
 
 @app.get("/admin/progress/html")
@@ -714,75 +635,6 @@ async def get_heatmap_partial(request: Request):
         "regions": regions,
         "cols": cols,
     })
-
-
-@app.get("/admin/map/render/{rx}/{rz}")
-async def render_region_tile(rx: int, rz: int, request: Request, scale: int = 1):
-    cache_path = cached_region_path(rx, rz, scale)
-    if cache_path.exists():
-        logger.info("tile served from cache: %s,%s s=%s", rx, rz, scale)
-        return FileResponse(str(cache_path), media_type="image/png")
-
-    if scale not in (1, 16):
-        hi_cache = cached_region_path(rx, rz, 16)
-        if hi_cache.exists():
-            img = Image.open(hi_cache)
-            img = img.resize((512 * scale, 512 * scale), Image.LANCZOS)
-            img.save(cache_path)
-            logger.info("tile served from hi-cache: %s,%s s=%s", rx, rz, scale)
-            return FileResponse(str(cache_path), media_type="image/png")
-
-        lo_cache = cached_region_path(rx, rz, 1)
-        if lo_cache.exists():
-            img = Image.open(lo_cache)
-            img = img.resize((512 * scale, 512 * scale), Image.NEAREST)
-            img.save(cache_path)
-            logger.info("tile served from lo-cache scaled: %s,%s s=%s", rx, rz, scale)
-            return FileResponse(str(cache_path), media_type="image/png")
-
-    logger.warning("tile render fallback: %s,%s s=%s", rx, rz, scale)
-
-    mca_path = None
-    if STORAGE_DIR.exists():
-        for bdir in sorted(STORAGE_DIR.iterdir(), key=lambda p: int(p.name)):
-            candidate = bdir / f"r.{rx}.{rz}.mca"
-            if candidate.exists():
-                mca_path = candidate
-                break
-
-    if not mca_path:
-        return JSONResponse({"error": f"Region r.{rx}.{rz}.mca not found"}, status_code=404)
-
-    _RENDER_POOL = getattr(app.state, "_render_pool", None)
-    if _RENDER_POOL is None:
-        _RENDER_POOL = ThreadPoolExecutor(max_workers=2)
-        app.state._render_pool = _RENDER_POOL
-    loop = asyncio.get_running_loop()
-    result = await loop.run_in_executor(
-        _RENDER_POOL, render_region_tile_cached, mca_path, rx, rz, 1
-    )
-    if result is None:
-        return JSONResponse({"error": "Failed to render region"}, status_code=500)
-
-    if scale > 1:
-        img = Image.open(result)
-        new_size = (512 * scale, 512 * scale)
-        img = img.resize(new_size, Image.NEAREST)
-        out = cached_region_path(rx, rz, scale)
-        img.save(out)
-        return FileResponse(str(out), media_type="image/png")
-
-    return FileResponse(str(result), media_type="image/png")
-
-
-@app.get("/admin/map/render/world")
-async def render_world_map(request: Request, scale: int = 1):
-    loop = asyncio.get_running_loop()
-    img = await loop.run_in_executor(ThreadPoolExecutor(), render_world_map, STORAGE_DIR, scale)
-    buf = io.BytesIO()
-    img.save(buf, format="PNG")
-    buf.seek(0)
-    return StreamingResponse(buf, media_type="image/png")
 
 
 if __name__ == "__main__":

@@ -45,6 +45,8 @@ def load_logging_config(path=None):
 
 
 def setup_logging():
+    log_dir = _BASE_DIR / "logs"
+    log_dir.mkdir(exist_ok=True)
     logging.ColoredFormatter = ColoredFormatter
     logging_config = load_logging_config()
     logging.config.dictConfig(config=logging_config)

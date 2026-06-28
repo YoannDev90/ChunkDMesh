@@ -101,7 +101,7 @@ class Validation(Base):
 
 
 # Async engine & session factory
-engine = create_async_engine(DATABASE_URL, echo=False, future=True)
+engine = create_async_engine(DATABASE_URL, echo=False, future=True, connect_args={"timeout": 30})
 AsyncSessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 

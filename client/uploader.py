@@ -46,21 +46,6 @@ class RegionUploader:
             resp.raise_for_status()
             return resp.json()
 
-    def upload_tile(self, batch_id: int, tile_path: Path, scale: int = 1) -> dict:
-        with httpx.Client(follow_redirects=True, timeout=120) as client:
-            resp = client.put(
-                f"{self.server_url}/tasks/upload/tile/{batch_id}",
-                content=tile_path.read_bytes(),
-                headers={
-                    **self.headers,
-                    "Content-Type": "image/png",
-                    "X-Filename": tile_path.name,
-                    "X-Scale": str(scale),
-                },
-            )
-            resp.raise_for_status()
-            return resp.json()
-
     def submit_hashes(self, batch_id: int, chunk_hashes: dict[str, str]) -> dict:
         with httpx.Client(follow_redirects=True, timeout=30) as client:
             resp = client.post(

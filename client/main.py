@@ -16,7 +16,8 @@ if _server_dir not in sys.path:
     sys.path.insert(0, _server_dir)
 
 import httpx
-from api_config import SERVER_URL
+import os
+SERVER_URL = os.environ.get("CHUNKMESH_SERVER_URL", "http://localhost:8000")
 from utils import ResourceReportFormat, get_available_resources_averaged
 
 
@@ -272,21 +273,6 @@ def main():
 
     chunky = ChunkyController(rcon)
 
-    # ── Texture atlas init (client jar + mod jars) ──────────────────────
-    print()
-    log("🖼️", "Building texture atlas from client jar + mods...")
-    try:
-        from server.texture_extractor import build_texture_atlas
-        tex_dir = Path.home() / ".chunkdmesh" / "textures"
-        tex_dir.mkdir(parents=True, exist_ok=True)
-        mod_jar_dir = work_dir / "server" / "mods"
-        mod_jars = list(mod_jar_dir.glob("*.jar")) if mod_jar_dir.exists() else []
-        texture_atlas = build_texture_atlas(mc_version, tex_dir, mod_jars)
-        log("🖼️", f"Atlas ready: {len(texture_atlas.block_texture)} blocks mapped")
-    except Exception as e:
-        log("⚠️", f"Texture atlas init failed ({e}), falling back to solid colors")
-        texture_atlas = None
-
     # ── Work loop: fetch single region → generate → save → upload → repeat ──
     import time as _time
     from uploader import RegionUploader
@@ -344,6 +330,10 @@ def main():
         rcon.run("chunky", "shape", shape)
         rcon.run("chunky", "pattern", "loop")
         start_resp = rcon.run("chunky", "start")
+        if "confirm" in start_resp.lower():
+            log("⛏️ ", "Existing task detected, confirming...")
+            rcon.run("chunky", "confirm")
+            start_resp = rcon.run("chunky", "start")
         log("⛏️ ", f"Chunky: {start_resp}")
 
         import re as _re
@@ -481,85 +471,39 @@ def main():
 
         rcon.run("save-off")
 
-        all_hashes = {}
+        try:
+            all_hashes = {}
 
-        if not found:
-            log("❌", f"No .mca files found for region ({rx}, {rz})")
-            all_files = list(region_dir.glob("*.mca"))
-            log("🔍", f"Files in region dir: {[f.name for f in all_files]}")
-            # Still attempt hash submission even without files
-        else:
-            # ── Upload each found file ──────────────────────────────
-            for mca_path in found:
-                file_hash = hashlib.sha256()
-                with open(mca_path, "rb") as fh:
-                    for chunk in iter(lambda: fh.read(1024 * 64), b""):
-                        file_hash.update(chunk)
-                hex_hash = file_hash.hexdigest()
+            if not found:
+                log("❌", f"No .mca files found for region ({rx}, {rz})")
+                all_files = list(region_dir.glob("*.mca"))
+                log("🔍", f"Files in region dir: {[f.name for f in all_files]}")
+            else:
+                for mca_path in found:
+                    file_hash = hashlib.sha256()
+                    with open(mca_path, "rb") as fh:
+                        for chunk in iter(lambda: fh.read(1024 * 64), b""):
+                            file_hash.update(chunk)
+                    hex_hash = file_hash.hexdigest()
 
-                try:
-                    uploader.upload_file(batch_id, mca_path)
-                    log("📤", f"Uploaded {mca_path.name} ({mca_path.stat().st_size} bytes)")
-                    all_hashes[mca_path.name] = hex_hash
-
-                    # Render + upload scale-1 tile (fast, 512x512 solid colors)
                     try:
-                        from server.map_renderer import render_region_tile
-                        log("🗺️", f"Rendering s1 tile for region ({rx}, {rz})...")
-                        t0 = _time.time()
-                        img = render_region_tile(mca_path, rx, rz, 1)
-                        if img:
-                            tile_path = mca_path.with_suffix(".png")
-                            img.save(tile_path)
-                            log("🗺️", f"Rendered s1 in {(_time.time()-t0):.1f}s, uploading...")
-                            uploader.upload_tile(batch_id, tile_path, scale=1)
-                            tile_path.unlink()
-                            log("🗺️", f"Tile s1 uploaded for region ({rx}, {rz})")
-                        else:
-                            log("⚠️", f"Render s1 returned None for region ({rx}, {rz})")
-                    except Exception as tile_err:
-                        log("⚠️", f"Tile s1 render/upload failed: {tile_err}")
+                        uploader.upload_file(batch_id, mca_path)
+                        log("📤", f"Uploaded {mca_path.name} ({mca_path.stat().st_size} bytes)")
+                        all_hashes[mca_path.name] = hex_hash
+                    except Exception as e:
+                        log("❌", f"Upload failed for {mca_path.name}: {e}")
 
-                    # Scale 16 textures in background (heavy: 8192x8192)
-                    # NOTE: mca file must stay on disk until s16 thread finishes reading it
-                    if texture_atlas is not None:
-                        def _render_hires(mca=str(mca_path), rx=rx, rz=rz, bid=batch_id):
-                            try:
-                                from server.map_renderer import render_region_tile_textured
-                                log("🗺️", f"[bg] Rendering s16 textures for region ({rx}, {rz})...")
-                                t0 = _time.time()
-                                big = render_region_tile_textured(Path(mca), rx, rz, texture_atlas, scale=16)
-                                if big:
-                                    big_path = Path(mca).with_suffix(".png")
-                                    big.save(big_path)
-                                    log("🗺️", f"[bg] Rendered s16 in {(_time.time()-t0):.1f}s, uploading...")
-                                    uploader.upload_tile(bid, big_path, scale=16)
-                                    big_path.unlink()
-                                    log("🗺️", f"[bg] Tile s16 uploaded for region ({rx}, {rz})")
-                                else:
-                                    log("⚠️", f"[bg] Render s16 returned None for region ({rx}, {rz})")
-                            except Exception as e:
-                                log("⚠️", f"[bg] Tile s16 render/upload failed: {e}")
-                            finally:
-                                log("🗑️ ", f"Keeping {Path(mca).name}")
-                        threading.Thread(target=_render_hires, daemon=True).start()
-                    else:
-                        log("🗑️ ", f"Keeping {mca_path.name} (no atlas)")
+            if all_hashes:
+                log("🔑", f"Submitting {len(all_hashes)} hash(es) for batch #{batch_id}...")
+                try:
+                    submit_result = uploader.submit_hashes(batch_id, all_hashes)
+                    log("🔑", f"Submit result: {submit_result}")
                 except Exception as e:
-                    log("❌", f"Upload failed for {mca_path.name}: {e}")
-
-        # ── Submit hash for this batch ──────────────────────────
-        if all_hashes:
-            log("🔑", f"Submitting {len(all_hashes)} hash(es) for batch #{batch_id}...")
-            try:
-                submit_result = uploader.submit_hashes(batch_id, all_hashes)
-                log("🔑", f"Submit result: {submit_result}")
-            except Exception as e:
-                log("❌", f"Hash submission failed: {e}")
-        else:
-            log("⚠️", f"No files uploaded for batch #{batch_id}, skipping hash submission")
-
-        rcon.run("save-on")
+                    log("❌", f"Hash submission failed: {e}")
+            else:
+                log("⚠️", f"No files uploaded for batch #{batch_id}, skipping hash submission")
+        finally:
+            rcon.run("save-on")
 
     rcon.disconnect()
     mc_log_stop.set()
