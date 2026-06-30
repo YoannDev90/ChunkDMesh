@@ -33,6 +33,12 @@ class ClientTUI:
         self._latest_step: StepSnapshot | None = None
         self._system: SystemSample | None = None
         self._layout: Layout | None = None
+        self._progress_bar = Progress(
+            BarColumn(),
+            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+            TimeElapsedColumn(),
+        )
+        self._progress_task = self._progress_bar.add_task("Idle", total=100)
 
     def set_status(self, status: str, detail: str = ""):
         with self._lock:
@@ -135,11 +141,12 @@ class ClientTUI:
         return Panel(table, title="Last Steps", border_style="green")
 
     def _render_progress(self) -> Panel:
-        with self._lock:
-            progress = self._current_progress
         import re as _re
 
+        with self._lock:
+            progress = self._current_progress
         pct = 0
+        label = "Idle"
         if progress:
             mp = _re.search(r"\((\d+(?:\.\d+)?)%\)", progress)
             if mp:
@@ -150,14 +157,9 @@ class ClientTUI:
                 total = int(mp2.group(2))
                 if total > 0:
                     pct = done / total * 100
-        bar = Progress(
-            BarColumn(),
-            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-            TimeElapsedColumn(),
-        )
-        task_id = bar.add_task("Chunky" if pct > 0 else "Idle", total=100)
-        bar.update(task_id, completed=pct)
-        elements = [bar]
+            label = "Chunky"
+        self._progress_bar.update(self._progress_task, completed=pct, description=label)
+        elements = [self._progress_bar]
         if progress:
             elements.append(Text(progress, style="yellow"))
         return Panel(Align.center("\n".join([str(e) for e in elements])), title="Progress", border_style="yellow")

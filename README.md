@@ -62,13 +62,13 @@ uv run python run.py client
 
 Client connects to the server, benchmarks CPU, and generates chunks. The Rich TUI displays status, progress bar, per-step metrics, and system stats.
 
-### Launch both
+### Launch both (server + client)
 
 ```sh
 uv run python run.py both
 ```
 
-Starts server and client in parallel.
+Starts server in background and client in foreground with a **unified TUI** that shows both server stats (tasks, requests, storage) and client progress (status, Chunky progress bar, per-step metrics) in a single screen.
 
 ### CLI options
 
