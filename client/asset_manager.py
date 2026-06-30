@@ -1,11 +1,11 @@
 import hashlib
 import json
+import secrets
 import shutil
 import subprocess
 import sys
 import zipfile
 from pathlib import Path
-from typing import Optional
 
 import httpx
 
@@ -13,6 +13,45 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from java_utils import ensure_java
 
 WORK_DIR = Path.home() / ".chunkdmesh" / "work"
+RCON_PASSWORD_FILE = ".rcon_password"
+
+_LOADER_CONFIGS = {
+    "fabric": {
+        "install_url": "https://meta.fabricmc.net/v2/versions/loader/{mc_version}/{loader_version}/1.0.0/server/jar",
+        "installer_args": [],
+        "installed_jar_patterns": [
+            "fabric-server-mc.{mc_version}-loader.{loader_version}-launcher.{mc_version}.jar",
+        ],
+    },
+    "forge": {
+        "install_url": "https://maven.minecraftforge.net/net/minecraftforge/forge/{mc_version}-{loader_version}/forge-{mc_version}-{loader_version}-installer.jar",
+        "installer_jar": "forge-{mc_version}-{loader_version}-installer.jar",
+        "installer_args": [],
+        "installed_jar_patterns": [
+            "forge-{mc_version}-{loader_version}.jar",
+            "forge-{mc_version}-{loader_version}-universal.jar",
+            "forge-{mc_version}-{loader_version}-server.jar",
+        ],
+    },
+    "quilt": {
+        "install_url": "https://maven.quiltmc.org/repository/release/org/quiltmc/quilt-installer/{loader_version}/quilt-installer-{loader_version}.jar",
+        "installer_jar": "quilt-server-installer-{loader_version}.jar",
+        "installer_args": ["--install-server"],
+        "installed_jar_patterns": [
+            "quilt-server-{loader_version}.jar",
+            "quilt-server-mc.{mc_version}-ql.{loader_version}.jar",
+        ],
+    },
+    "neoforge": {
+        "install_url": "https://maven.neoforged.net/releases/net/neoforged/neoforge/{loader_version}/neoforge-{mc_version}-{loader_version}-installer.jar",
+        "installer_jar": "neoforge-{mc_version}-{loader_version}-installer.jar",
+        "installer_args": ["--install-server"],
+        "installed_jar_patterns": [
+            "neoforge-{mc_version}-{loader_version}.jar",
+            "neoforge-{mc_version}-{loader_version}-universal.jar",
+        ],
+    },
+}
 
 
 class AssetManager:
@@ -28,30 +67,30 @@ class AssetManager:
             resp.raise_for_status()
             return resp
 
-    def download_mods(self, expected_hash: Optional[str] = None) -> Path:
+    def download_mods(self, expected_hash: str | None = None) -> Path:
         zip_path = self.work_dir / "mods.zip"
 
         if zip_path.exists() and expected_hash:
             if self._verify_hash(zip_path, expected_hash):
-                print(f"mods.zip already present and hash matches")
+                print("mods.zip already present and hash matches")
                 return zip_path
             print("mods.zip hash mismatch, re-downloading...")
 
         self.work_dir.mkdir(parents=True, exist_ok=True)
 
         print("Downloading mods.zip...")
-        with httpx.Client(follow_redirects=True, timeout=300, headers=self.headers) as client:
-            with client.stream("GET", f"{self.server_url}/assets/mods.zip") as resp:
-                resp.raise_for_status()
-                with open(zip_path, "wb") as f:
-                    for chunk in resp.iter_bytes(chunk_size=1024 * 64):
-                        f.write(chunk)
+        with httpx.Client(follow_redirects=True, timeout=300, headers=self.headers) as client, \
+                client.stream("GET", f"{self.server_url}/assets/mods.zip") as resp:
+            resp.raise_for_status()
+            with open(zip_path, "wb") as f:
+                for chunk in resp.iter_bytes(chunk_size=1024 * 64):
+                    f.write(chunk)
         print(f"Downloaded to {zip_path}")
 
         if expected_hash:
             if not self._verify_hash(zip_path, expected_hash):
                 zip_path.unlink()
-                raise ValueError(f"Hash mismatch for mods.zip")
+                raise ValueError("Hash mismatch for mods.zip")
             print("Hash verified")
 
         return zip_path
@@ -121,21 +160,36 @@ class AssetManager:
         print(f"Saved: {dest}")
         return dest
 
-    def extract_mods(self, zip_path: Path, dest: Optional[Path] = None) -> Path:
+    def extract_mods(self, zip_path: Path, dest: Path | None = None) -> Path:
         mods_dir = dest or self.work_dir / "server" / "mods"
         mods_dir.mkdir(parents=True, exist_ok=True)
 
         print(f"Extracting mods to {mods_dir}...")
         with zipfile.ZipFile(zip_path, "r") as zf:
+            for info in zf.infolist():
+                target = (mods_dir / info.filename).resolve()
+                if not str(target).startswith(str(mods_dir.resolve())):
+                    raise RuntimeError(f"Path traversal blocked: {info.filename}")
             zf.extractall(mods_dir)
 
         extracted = list(mods_dir.iterdir())
         print(f"Extracted {len(extracted)} items")
         return mods_dir
 
+    def get_rcon_password(self) -> str:
+        pw_file = self.work_dir / RCON_PASSWORD_FILE
+        if pw_file.exists():
+            return pw_file.read_text().strip()
+        pw = secrets.token_hex(16)
+        self.work_dir.mkdir(parents=True, exist_ok=True)
+        pw_file.write_text(pw)
+        return pw
+
     def write_server_properties(self, seed=None) -> Path:
         server_dir = self.work_dir / "server"
         server_dir.mkdir(parents=True, exist_ok=True)
+
+        rcon_password = self.get_rcon_password()
 
         props = {
             "level-name": "world",
@@ -151,7 +205,7 @@ class AssetManager:
             "view-distance": "8",
             "enable-rcon": "true",
             "rcon.port": "25575",
-            "rcon.password": "chunkdmesh",
+            "rcon.password": rcon_password,
             "broadcast-console-to-ops": "false",
             "broadcast-rcon-to-ops": "false",
             "online-mode": "false",
@@ -178,154 +232,52 @@ class AssetManager:
         server_dir = self.work_dir / "server"
         server_dir.mkdir(parents=True, exist_ok=True)
 
+        cfg = _LOADER_CONFIGS.get(loader)
+        if not cfg:
+            raise ValueError(f"Unsupported loader: {loader}")
+
         java_home = ensure_java(mc_version)
         java_bin = java_home / "bin" / "java"
 
-        if loader == "fabric":
-            return self._install_fabric(server_dir, java_bin, mc_version, loader_version)
-        elif loader == "forge":
-            return self._install_forge(server_dir, java_bin, mc_version, loader_version)
-        elif loader == "quilt":
-            return self._install_quilt(server_dir, java_bin, mc_version, loader_version)
-        elif loader == "neoforge":
-            return self._install_neoforge(server_dir, java_bin, mc_version, loader_version)
+        return self._install_loader(server_dir, java_bin, mc_version, loader_version, cfg)
+
+    def _install_loader(self, server_dir: Path, java_bin: Path, mc_version: str, loader_version: str, cfg: dict) -> Path:
+        args = {"mc_version": mc_version, "loader_version": loader_version}
+
+        patterns = [p.format(**args) for p in cfg["installed_jar_patterns"]]
+        for name in patterns:
+            path = server_dir / name
+            if path.exists():
+                print(f"Already installed: {path}")
+                return path
+
+        installer_jar_template = cfg.get("installer_jar")
+        if installer_jar_template:
+            installer_jar = server_dir / installer_jar_template.format(**args)
+
+            if not installer_jar.exists():
+                url = cfg["install_url"].format(**args)
+                print(f"Downloading installer from {url}...")
+                self._download_file(url, installer_jar)
+
+            extra_args = cfg.get("installer_args", [])
+            print("Running installer...")
+            cmd = [str(java_bin), "-jar", str(installer_jar)] + extra_args
+            result = subprocess.run(cmd, cwd=str(server_dir), capture_output=True, text=True, timeout=300)
+            if result.returncode != 0:
+                print(f"Installer stdout:\n{result.stdout}")
+                print(f"Installer stderr:\n{result.stderr}")
+                raise RuntimeError(f"Installer failed with code {result.returncode}")
+            print("Installer completed successfully")
+            installer_jar.unlink(missing_ok=True)
         else:
-            raise ValueError(f"Unsupported loader: {loader}")
-
-    def _install_fabric(self, server_dir: Path, java_bin: Path, mc_version: str, loader_version: str) -> Path:
-        jar_name = f"fabric-server-mc.{mc_version}-loader.{loader_version}-launcher.{mc_version}.jar"
-        jar_path = server_dir / jar_name
-
-        if jar_path.exists():
-            print(f"Fabric server jar already present: {jar_path}")
+            url = cfg["install_url"].format(**args)
+            jar_name = patterns[0]
+            jar_path = server_dir / jar_name
+            print(f"Downloading from {url}...")
+            self._download_file(url, jar_path)
+            print(f"Saved: {jar_path}")
             return jar_path
-
-        url = (
-            f"https://meta.fabricmc.net/v2/versions/loader"
-            f"/{mc_version}/{loader_version}/1.0.0/server/jar"
-        )
-        print(f"Downloading Fabric server jar from {url}...")
-        self._download_file(url, jar_path)
-        print(f"Fabric server jar saved to {jar_path}")
-        return jar_path
-
-    def _install_forge(self, server_dir: Path, java_bin: Path, mc_version: str, loader_version: str) -> Path:
-        installer_jar = server_dir / f"forge-{mc_version}-{loader_version}-installer.jar"
-
-        if not installer_jar.exists():
-            url = (
-                f"https://maven.minecraftforge.net/net/minecraftforge/forge"
-                f"/{mc_version}-{loader_version}/forge-{mc_version}-{loader_version}-installer.jar"
-            )
-            print(f"Downloading Forge installer from {url}...")
-            self._download_file(url, installer_jar)
-
-        installed_jar = self._find_installed_jar(server_dir, "forge", mc_version, loader_version)
-        if installed_jar:
-            print(f"Forge already installed: {installed_jar}")
-            return installed_jar
-
-        print("Running Forge installer...")
-        self._run_installer(java_bin, installer_jar, server_dir)
-
-        installed_jar = self._find_installed_jar(server_dir, "forge", mc_version, loader_version)
-        if not installed_jar:
-            raise RuntimeError("Forge installation failed: server jar not found")
-
-        installer_jar.unlink(missing_ok=True)
-        return installed_jar
-
-    def _install_quilt(self, server_dir: Path, java_bin: Path, mc_version: str, loader_version: str) -> Path:
-        installer_jar = server_dir / f"quilt-server-installer-{loader_version}.jar"
-
-        if not installer_jar.exists():
-            url = (
-                f"https://maven.quiltmc.org/repository/release/org/quiltmc/quilt-installer"
-                f"/{loader_version}/quilt-installer-{loader_version}.jar"
-            )
-            print(f"Downloading Quilt installer from {url}...")
-            self._download_file(url, installer_jar)
-
-        installed_jar = self._find_installed_jar(server_dir, "quilt", mc_version, loader_version)
-        if installed_jar:
-            print(f"Quilt already installed: {installed_jar}")
-            return installed_jar
-
-        print("Running Quilt installer...")
-        self._run_installer(java_bin, installer_jar, server_dir, ["--install-server"])
-
-        installed_jar = self._find_installed_jar(server_dir, "quilt", mc_version, loader_version)
-        if not installed_jar:
-            raise RuntimeError("Quilt installation failed: server jar not found")
-
-        installer_jar.unlink(missing_ok=True)
-        return installed_jar
-
-    def _install_neoforge(self, server_dir: Path, java_bin: Path, mc_version: str, loader_version: str) -> Path:
-        installer_jar = server_dir / f"neoforge-{mc_version}-{loader_version}-installer.jar"
-
-        if not installer_jar.exists():
-            url = (
-                f"https://maven.neoforged.net/releases/net/neoforged/neoforge"
-                f"/{loader_version}/neoforge-{mc_version}-{loader_version}-installer.jar"
-            )
-            print(f"Downloading NeoForge installer from {url}...")
-            self._download_file(url, installer_jar)
-
-        installed_jar = self._find_installed_jar(server_dir, "neoforge", mc_version, loader_version)
-        if installed_jar:
-            print(f"NeoForge already installed: {installed_jar}")
-            return installed_jar
-
-        print("Running NeoForge installer...")
-        self._run_installer(java_bin, installer_jar, server_dir, ["--install-server"])
-
-        installed_jar = self._find_installed_jar(server_dir, "neoforge", mc_version, loader_version)
-        if not installed_jar:
-            raise RuntimeError("NeoForge installation failed: server jar not found")
-
-        installer_jar.unlink(missing_ok=True)
-        return installed_jar
-
-    def _run_installer(self, java_bin: Path, installer_jar: Path, cwd: Path, extra_args: list[str] | None = None):
-        cmd = [str(java_bin), "-jar", str(installer_jar)]
-        if extra_args:
-            cmd.extend(extra_args)
-
-        result = subprocess.run(
-            cmd,
-            cwd=str(cwd),
-            capture_output=True,
-            text=True,
-            timeout=300,
-        )
-
-        if result.returncode != 0:
-            print(f"Installer stdout:\n{result.stdout}")
-            print(f"Installer stderr:\n{result.stderr}")
-            raise RuntimeError(f"Installer failed with code {result.returncode}")
-
-        print("Installer completed successfully")
-
-    def _find_installed_jar(self, server_dir: Path, loader: str, mc_version: str, loader_version: str) -> Optional[Path]:
-        if loader == "forge":
-            patterns = [
-                f"forge-{mc_version}-{loader_version}.jar",
-                f"forge-{mc_version}-{loader_version}-universal.jar",
-                f"forge-{mc_version}-{loader_version}-server.jar",
-            ]
-        elif loader == "quilt":
-            patterns = [
-                f"quilt-server-{loader_version}.jar",
-                f"quilt-server-mc.{mc_version}-ql.{loader_version}.jar",
-            ]
-        elif loader == "neoforge":
-            patterns = [
-                f"neoforge-{mc_version}-{loader_version}.jar",
-                f"neoforge-{mc_version}-{loader_version}-universal.jar",
-            ]
-        else:
-            return None
 
         for name in patterns:
             path = server_dir / name
@@ -333,18 +285,17 @@ class AssetManager:
                 return path
 
         for jar in server_dir.glob("*.jar"):
-            if loader in jar.name and mc_version in jar.name and "installer" not in jar.name:
+            if loader_version in jar.name and mc_version in jar.name and "installer" not in jar.name:
                 return jar
 
-        return None
+        raise RuntimeError(f"{cfg['name']} installation failed: server jar not found")
 
     def _download_file(self, url: str, dest: Path):
-        with httpx.Client(follow_redirects=True, timeout=300) as client:
-            with client.stream("GET", url) as resp:
-                resp.raise_for_status()
-                with open(dest, "wb") as f:
-                    for chunk in resp.iter_bytes(chunk_size=1024 * 64):
-                        f.write(chunk)
+        with httpx.Client(follow_redirects=True, timeout=300) as client, client.stream("GET", url) as resp:
+            resp.raise_for_status()
+            with open(dest, "wb") as f:
+                for chunk in resp.iter_bytes(chunk_size=1024 * 64):
+                    f.write(chunk)
 
     @staticmethod
     def _verify_hash(file_path: Path, expected_hash: str) -> bool:

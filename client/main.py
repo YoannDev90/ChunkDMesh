@@ -1,5 +1,8 @@
 """ChunkDMesh Client - Worker that connects to the orchestrator and generates chunks."""
 
+import argparse
+import contextlib
+import os
 import sys
 import threading
 import time
@@ -15,20 +18,220 @@ if _project_dir not in sys.path:
 if _server_dir not in sys.path:
     sys.path.insert(0, _server_dir)
 
-import httpx
-import os
 SERVER_URL = os.environ.get("CHUNKMESH_SERVER_URL", "http://localhost:8000")
-from utils import ResourceReportFormat, get_available_resources_averaged
+
+from client_tui import (  # noqa: E402
+    log,
+    set_batch_count,
+    set_power_score,
+    set_progress,
+    set_region,
+    set_server_url,
+    set_status,
+    tui,
+)
+from monitor import export_otel_console, monitor, sample_system  # noqa: E402
+
+HEARTBEAT_INTERVAL = 15
 
 
-def log(icon: str, msg: str):
-    print(f"  {icon} {msg}")
+def main(bg: bool = False):
+    from mc_lifecycle import MCLifecycle
+    from provisioner import Provisioner
+    from utils import ResourceReportFormat, get_available_resources_averaged
+    from work_loop import run_work_loop, send_request
+
+    set_server_url(SERVER_URL)
+
+    if not bg:
+        import threading as _t
+        tui_thread = _t.Thread(target=tui.run, daemon=True)
+        tui_thread.start()
+
+    # ── Wait for server ──────────────────────────────────────
+    set_status("connecting")
+    log("⏳", f"Waiting for server at {SERVER_URL}...")
+    with monitor.measure("wait_for_server"):
+        if not _wait_for_server(SERVER_URL):
+            log("❌", "Server unreachable after 120s, aborting.")
+            if not bg:
+                tui.stop()
+            return
+    set_status("connected")
+
+    # ── Power score ─────────────────────────────────────────
+    log("📊", "Power score...")
+    with monitor.measure("power_score"):
+        power_score = get_available_resources_averaged(
+            print_output=False, return_format=ResourceReportFormat.VALUE
+        )
+    set_power_score(power_score)
+    log("📊", f"Score: {power_score:.2f}")
+
+    # ── Login ──────────────────────────────────────────────
+    set_status("login")
+    log("🔑", "Logging in...")
+    with monitor.measure("login"):
+        r = send_request(
+            f"{SERVER_URL}/auth/login",
+            method="POST",
+            payload={"power_score": power_score},
+        )
+    if r.status_code != 200:
+        log("❌", f"Login failed: {r.status_code} - {r.text}")
+        if not bg:
+            tui.stop()
+        return
+    token = r.json()["token"]
+    log("🔑", "Token acquired")
+
+    # ── Provisioning ────────────────────────────────────────
+    provisioner = Provisioner(SERVER_URL, token, log_fn=log)
+
+    set_status("config")
+    log("⚙️ ", "Fetching config...")
+    with monitor.measure("fetch_config"):
+        config = provisioner.fetch_config()
+    if not config:
+        if not bg:
+            tui.stop()
+        return
+
+    mc_version = config.get("minecraft_version", "1.20.4")
+    loader = config.get("minecraft_loader", "fabric")
+    loader_version = config.get("loader_version", "0.19.3")
+    seed = config.get("seed", 0)
+    shape = config.get("shape", "square")
+    dimension = config.get("dimension", "overworld")
+
+    set_status("java")
+    log("☕", "Detecting Java...")
+    with monitor.measure("ensure_java"):
+        java_bin = provisioner.setup_java(mc_version)
+
+    from asset_manager import AssetManager
+    work_dir = Path.home() / ".chunkdmesh" / "work"
+    asset_mgr = AssetManager(SERVER_URL, token, work_dir=work_dir)
+
+    set_status("setup")
+    log("📁", "Setting up server...")
+    with monitor.measure("setup_server"):
+        server_dir = provisioner.setup_server(asset_mgr, mc_version, loader, loader_version)
+
+    set_status("mods")
+    log("📥", "Downloading mods...")
+    with monitor.measure("download_mods"):
+        if not provisioner.download_mods(asset_mgr, config, mc_version, loader):
+            if not bg:
+                tui.stop()
+            return
+
+    log("🔧", f"Installing {loader} {loader_version}...")
+    with monitor.measure("install_loader"):
+        jar_path = provisioner.install_loader(asset_mgr, mc_version, loader, loader_version)
+        if not jar_path:
+            log("❌", "Loader install failed")
+            if not bg:
+                tui.stop()
+            return
+
+    # ── MC lifecycle ────────────────────────────────────────
+    lifecycle = MCLifecycle(server_dir, java_bin, jar_path, asset_mgr, seed, mc_version, log_fn=log)
+
+    set_status("launching")
+    log("🚀", "Launching server...")
+    with monitor.measure("server_start"):
+        lifecycle.start_server()
+
+    lifecycle.start_log_stream()
+
+    with monitor.measure("wait_ready"):
+        if not lifecycle.wait_until_ready(timeout=300):
+            log("❌", "Server failed to start within 300s")
+            lifecycle.stop()
+            if not bg:
+                tui.stop()
+            return
+
+    if not lifecycle.check_rcon_enabled():
+        log("🚀", "RCON not in server.properties, restarting...")
+        with monitor.measure("server_restart"):
+            if not lifecycle.restart_for_rcon():
+                log("❌", "Server failed to restart with RCON")
+                lifecycle.stop()
+                if not bg:
+                    tui.stop()
+                return
+
+    log("🚀", "Server is ready!")
+    set_status("ready")
+
+    log("🔗", "Connecting RCON...")
+    rcon_password = asset_mgr.get_rcon_password()
+    with monitor.measure("rcon_connect"):
+        if not lifecycle.connect_rcon(rcon_password):
+            log("❌", "RCON connection failed")
+            lifecycle.stop()
+            if not bg:
+                tui.stop()
+            return
+
+    # ── Heartbeat ───────────────────────────────────────────
+    heartbeat_stop = threading.Event()
+
+    def _heartbeat_loop():
+        while not heartbeat_stop.is_set():
+            with contextlib.suppress(Exception):
+                send_request(f"{SERVER_URL}/heartbeat", method="POST",
+                             headers=provisioner.auth_headers)
+            heartbeat_stop.wait(HEARTBEAT_INTERVAL)
+
+    heartbeat_thread = threading.Thread(target=_heartbeat_loop, daemon=True)
+    heartbeat_thread.start()
+
+    # ── Work loop ───────────────────────────────────────────
+    set_status("ready")
+    from uploader import RegionUploader
+    uploader = RegionUploader(SERVER_URL, token)
+
+    batch_count = run_work_loop(
+        server_url=SERVER_URL,
+        auth_headers=provisioner.auth_headers,
+        dimension=dimension,
+        server_dir=server_dir,
+        rcon=lifecycle.rcon,
+        chunky=lifecycle.chunky,
+        uploader=uploader,
+        shape=shape,
+        monitor=monitor,
+        log_fn=log,
+        set_status_fn=set_status,
+        set_region_fn=set_region,
+        set_progress_fn=set_progress,
+        set_batch_count_fn=set_batch_count,
+    )
+
+    # ── Cleanup ─────────────────────────────────────────────
+    heartbeat_stop.set()
+    lifecycle.stop()
+    log("🛑", "Server stopped")
+
+    export_otel_console(monitor.steps(), sample_system())
+
+    log("✅", f"Done! {batch_count} batch(es) completed")
+    log("🌐", "Dashboard: http://localhost:8000/admin")
+    log("🌐", "Map:       http://localhost:8000/admin/map")
+
+    set_status("done")
+    if not bg:
+        time.sleep(2)
+        tui.stop()
 
 
-def wait_for_server(url: str, max_wait: float = 120.0) -> bool:
+def _wait_for_server(url: str, max_wait: float = 120.0) -> bool:
+    import httpx
     delay = 0.5
     start = time.time()
-    log("⏳", f"Waiting for server at {url}...")
     while time.time() - start < max_wait:
         try:
             with httpx.Client(timeout=3) as client:
@@ -43,480 +246,8 @@ def wait_for_server(url: str, max_wait: float = 120.0) -> bool:
     return False
 
 
-def send_request(url: str, method: str = "GET", payload=None, headers=None):
-    with httpx.Client(timeout=120) as client:
-        if method == "GET":
-            return client.get(url, headers=headers)
-        elif method == "POST":
-            return client.post(url, json=payload, headers=headers)
-        elif method == "PUT":
-            return client.put(url, json=payload, headers=headers)
-        else:
-            raise ValueError(f"Unsupported HTTP method: {method}")
-
-
-def region_dir_for_dim(server_dir: Path, dimension: str) -> Path:
-    if dimension in ("nether", "the_nether", "minecraft:the_nether"):
-        return server_dir / "world" / "DIM-1" / "region"
-    elif dimension in ("end", "the_end", "minecraft:the_end"):
-        return server_dir / "world" / "DIM1" / "region"
-    return server_dir / "world" / "region"
-
-
-def main():
-    print("=" * 50)
-    print("  ChunkDMesh Client")
-    print("=" * 50)
-    print()
-
-    if not wait_for_server(SERVER_URL):
-        log("❌", "Server unreachable after 120s, aborting.")
-        return
-
-    # ── Power score ─────────────────────────────────────────
-    print()
-    log("📊", "Power score...")
-    power_score = get_available_resources_averaged(
-        print_output=False, return_format=ResourceReportFormat.VALUE
-    )
-    log("📊", f"Score: {power_score:.2f}")
-
-    # ── Login ──────────────────────────────────────────────
-    print()
-    log("🔑", "Logging in...")
-    r = send_request(
-        f"{SERVER_URL}/auth/login",
-        method="POST",
-        payload={"power_score": power_score},
-    )
-    if r.status_code != 200:
-        log("❌", f"Login failed: {r.status_code} - {r.text}")
-        return
-    token = r.json()["token"]
-    log("🔑", f"Token acquired")
-
-    auth_headers = {"Authorization": f"Bearer {token}"}
-
-    # ── Fetch config ────────────────────────────────────────
-    print()
-    log("⚙️ ", "Fetching config...")
-    r = send_request(f"{SERVER_URL}/assets/config.json", headers=auth_headers)
-    if r.status_code != 200:
-        log("❌", f"Config fetch failed: {r.status_code} - {r.text}")
-        return
-    config = r.json()
-    mc_version = config.get("minecraft_version", "1.20.4")
-    loader = config.get("minecraft_loader", "fabric")
-    loader_version = config.get("loader_version", "0.19.3")
-    seed = config.get("seed", 0)
-    radius = config.get("radius", 1024)
-    shape = config.get("shape", "square")
-    dimension = config.get("dimension", "overworld")
-    log("⚙️ ", f"MC {mc_version} / {loader} {loader_version}")
-    log("⚙️ ", f"Seed: {seed} / Radius: {radius} / Shape: {shape} / Dim: {dimension}")
-
-    # ── Java ────────────────────────────────────────────────
-    print()
-    log("☕", "Detecting Java...")
-    from java_utils import ensure_java
-    try:
-        java_home = ensure_java(mc_version)
-        java_bin = java_home / "bin" / "java"
-        log("☕", f"Java ready: {java_home}")
-    except Exception as e:
-        log("❌", f"Java detection failed: {e}")
-        return
-
-    # ── Setup server dir + install loader ─────────────────────
-    print()
-    log("📁", "Setting up server...")
-    from asset_manager import AssetManager
-
-    work_dir = Path.home() / ".chunkdmesh" / "work"
-    asset_mgr = AssetManager(SERVER_URL, token, work_dir=work_dir)
-
-    server_dir = asset_mgr.setup_server_dir(mc_version, loader, loader_version)
-    log("📁", f"Server dir: {server_dir}")
-
-    # ── Download mods (server mods.zip OR Modrinth) ──────────
-    print()
-    log("📥", "Downloading mods...")
-    if config.get("has_mods_zip"):
-        mods_zip = asset_mgr.download_mods()
-        log("📥", f"Mods downloaded: {mods_zip}")
-        print()
-        log("🧩", "Extracting mods...")
-        mods_dir = asset_mgr.extract_mods(mods_zip)
-        log("🧩", f"Mods extracted to: {mods_dir}")
-    else:
-        log("📥", "No mods.zip configured, downloading Chunky + deps from Modrinth...")
-        from modrinth import get_modrinth_download, CHUNKY_MODRINTH_PROJECT_ID, FABRIC_API_PROJECT_ID
-
-        chunky_ver = config.get("chunky_version", "")
-        chunky_info = get_modrinth_download(CHUNKY_MODRINTH_PROJECT_ID, chunky_ver, loader, mc_version)
-        if not chunky_info:
-            log("❌", "Could not find Chunky version on Modrinth")
-            return
-        asset_mgr.download_from_modrinth(CHUNKY_MODRINTH_PROJECT_ID, chunky_ver, mc_version, loader)
-
-        fabric_api_info = get_modrinth_download(FABRIC_API_PROJECT_ID, "", "fabric", mc_version)
-        if fabric_api_info:
-            asset_mgr.download_from_modrinth(FABRIC_API_PROJECT_ID, "", mc_version, "fabric")
-            log("📥", "Fabric API downloaded")
-        else:
-            log("⚠️", "Fabric API not found, continuing without it")
-
-    print()
-    log("🔧", f"Installing {loader} {loader_version}...")
-    try:
-        jar_path = asset_mgr.get_server_jar(mc_version, loader, loader_version)
-        log("🔧", f"Server jar: {jar_path}")
-    except Exception as e:
-        log("❌", f"Loader install failed: {e}")
-        return
-
-    # ── Launch MC + RCON ────────────────────────────────────
-    print()
-    log("🚀", "Launching server...")
-    from instance_runner import MCServer
-
-    asset_mgr.write_server_properties(seed=seed)
-    log("🚀", f"server.properties written (seed={seed}, RCON enabled)")
-
-    server = MCServer(
-        server_dir=server_dir,
-        java_bin=java_bin,
-        jar_path=jar_path,
-        xmx_mb=4096,
-        xms_mb=1024,
-    )
-
-    server.start()
-    log("🚀", f"Server process PID: {server.get_pid()}")
-
-    mc_log_path = server_dir / "logs" / "latest.log"
-    mc_log_pos = mc_log_path.stat().st_size if mc_log_path.exists() else 0
-    mc_log_stop = threading.Event()
-
-    def _stream_mc_logs():
-        nonlocal mc_log_pos
-        import time as _t
-        import re as _re
-        while not mc_log_stop.is_set():
-            try:
-                if mc_log_path.exists():
-                    with open(mc_log_path, "r") as f:
-                        f.seek(mc_log_pos)
-                        new_lines = f.readlines()
-                        mc_log_pos = f.tell()
-                        for line in new_lines:
-                            line = line.rstrip()
-                            if not line:
-                                continue
-                            # Strip MC metadata [HH:MM:SS] [Thread/LEVEL]:
-                            msg = _re.sub(r'^\[\d{2}:\d{2}:\d{2}\]\s*\[[^\]]+\]\s*:\s*', '', line)
-                            log("📜", msg)
-            except Exception:
-                pass
-            _t.sleep(1.0)
-
-    mc_log_thread = threading.Thread(target=_stream_mc_logs, daemon=True)
-    mc_log_thread.start()
-
-    if not server.wait_until_ready(timeout=300):
-        log("❌", "Server failed to start within 300s")
-        mc_log_stop.set()
-        server.stop()
-        return
-
-    rcon_props_path = server_dir / "server.properties"
-    rcon_enabled = False
-    if rcon_props_path.exists():
-        with open(rcon_props_path) as f:
-            rcon_enabled = "enable-rcon=true" in f.read()
-
-    if not rcon_enabled:
-        log("🚀", "RCON not in server.properties, rewriting and restarting...")
-        mc_log_stop.set()
-        server.stop()
-        mc_log_pos = mc_log_path.stat().st_size if mc_log_path.exists() else 0
-        mc_log_stop.clear()
-        asset_mgr.write_server_properties()
-        server = MCServer(
-            server_dir=server_dir,
-            java_bin=java_bin,
-            jar_path=jar_path,
-            xmx_mb=4096,
-            xms_mb=1024,
-        )
-        server.start()
-        mc_log_thread = threading.Thread(target=_stream_mc_logs, daemon=True)
-        mc_log_thread.start()
-        if not server.wait_until_ready(timeout=300):
-            log("❌", "Server failed to restart with RCON")
-            mc_log_stop.set()
-            server.stop()
-            return
-
-    log("🚀", "Server is ready!")
-
-    print()
-    log("🔗", "Connecting RCON...")
-    from rcon_client import RCONConnection, ChunkyController
-
-    rcon = RCONConnection(host="127.0.0.1", port=25575, password="chunkdmesh")
-    if not rcon.connect(retries=15, delay=2.0):
-        log("❌", "RCON connection failed")
-        server.stop()
-        return
-    log("🔗", "RCON connected")
-
-    chunky = ChunkyController(rcon)
-
-    # ── Work loop: fetch single region → generate → save → upload → repeat ──
-    import time as _time
-    from uploader import RegionUploader
-    import hashlib
-    uploader = RegionUploader(SERVER_URL, token)
-    batch_count = 0
-
-    region_dir = region_dir_for_dim(server_dir, dimension)
-    region_dir.mkdir(parents=True, exist_ok=True)
-
-    while True:
-        print()
-        log("📦", "Fetching region task...")
-        r = send_request(f"{SERVER_URL}/tasks/batch", headers=auth_headers)
-        if r.status_code == 404:
-            log("📦", "No more tasks available. Done.")
-            break
-        if r.status_code != 200:
-            log("❌", f"Batch fetch failed: {r.status_code} - {r.text}")
-            _time.sleep(10)
-            continue
-        batch = r.json()
-        batch_id = batch["batch_id"]
-        regions = batch["regions"]
-        batch_count += 1
-
-        if not regions:
-            log("⚠️", "Empty batch, skipping")
-            continue
-
-        # Server now returns single region per batch
-        region = regions[0]
-        rx = int(region["region_x"])
-        rz = int(region["region_z"])
-        # Region corners in block coords (region is 512x512 blocks)
-        x1 = rx * 512
-        z1 = rz * 512
-        x2 = rx * 512 + 511
-        z2 = rz * 512 + 511
-
-        log("⛏️ ", f"Batch #{batch_id}: Region ({rx}, {rz}) → corners ({x1},{z1})-({x2},{z2})")
-
-        # Diagnostic: save + log state before Chunky runs
-        save_resp = rcon.run("save-all")
-        log("💾", f"Pre-save: {save_resp}")
-        _time.sleep(3)
-        sel_resp = rcon.run("chunky", "selection")
-        log("🔍", f"Selection: {sel_resp}")
-        pre_files = list(region_dir.glob("*.mca"))
-        log("🔍", f"Region dir before: {len(pre_files)} files - {[f.name for f in pre_files]}")
-
-        rcon.run("chunky", "world", "world")
-        rcon.run("chunky", "dimension", dimension)
-        chunky.set_corners(x1, z1, x2, z2)
-        rcon.run("chunky", "shape", shape)
-        rcon.run("chunky", "pattern", "loop")
-        start_resp = rcon.run("chunky", "start")
-        if "confirm" in start_resp.lower():
-            log("⛏️ ", "Existing task detected, confirming...")
-            rcon.run("chunky", "confirm")
-            start_resp = rcon.run("chunky", "start")
-        log("⛏️ ", f"Chunky: {start_resp}")
-
-        import re as _re
-        start_t = _time.time()
-        last_log = 0.0
-        seen_progress = False
-        last_chunks_done = 0
-        expected_chunks = 1024  # one full region = 32×32 chunks
-        while True:
-            elapsed = _time.time() - start_t
-            if elapsed > 1800:
-                log("⚠️ ", f"Region ({rx}, {rz}) timed out after 30min")
-                chunky.cancel()
-                break
-
-            try:
-                progress = chunky.status()
-            except Exception as e:
-                log("⚠️ ", f"Progress poll failed: {e}")
-                _time.sleep(5)
-                continue
-
-            if elapsed - last_log >= 5.0:
-                log("⛏️ ", f"[{elapsed:.0f}s] {progress}")
-                last_log = elapsed
-
-            pl = progress.lower()
-
-            # Parse "123/456" format (old Chunky)
-            m = _re.search(r'(\d[\d,]*)\s*/\s*(\d[\d,]*)', progress.replace(',', ''))
-            if m:
-                chunks_done = int(m.group(1))
-                chunks_total = int(m.group(2))
-                if chunks_total > 0:
-                    expected_chunks = min(chunks_total, 1024)  # MCA header max = 1024 chunks
-                last_chunks_done = chunks_done
-                seen_progress = True
-            else:
-                # Parse "Processed: 587 chunks (53.90%)" format (newer Chunky)
-                m2 = _re.search(r'(?:Processed|Finished|Generated)\s*:?\s*(\d[\d,]*)\s+chunks', progress.replace(',', ''))
-                if m2:
-                    chunks_done = int(m2.group(1))
-                    last_chunks_done = chunks_done
-                    seen_progress = True
-                    mp = _re.search(r'\((\d+(?:\.\d+)?)%\)', progress)
-                    if mp and chunks_done > 0:
-                        pct = float(mp.group(1))
-                        if pct > 0:
-                            expected_chunks = min(int(chunks_done / (pct / 100)), 1024)
-                else:
-                    # Fallback: match any "NNN chunks (XX%)" pattern
-                    m3 = _re.search(r'(\d[\d,]*)\s+chunks', progress.replace(',', ''))
-                    if m3:
-                        last_chunks_done = int(m3.group(1))
-                        seen_progress = True
-                        mp = _re.search(r'\((\d+(?:\.\d+)?)%\)', progress)
-                        if mp and last_chunks_done > 0:
-                            pct = float(mp.group(1))
-                            if pct > 0:
-                                expected_chunks = min(int(last_chunks_done / (pct / 100)), 1024)
-
-            # Explicit completion keywords
-            if elapsed > 3 and ("finished" in pl or "100%" in pl or "100.00%" in pl or "done" in pl):
-                log("⛏️ ", f"Region ({rx}, {rz}) done in {elapsed:.1f}s ({last_chunks_done}/{expected_chunks} chunks)")
-                break
-
-            # All expected chunks generated
-            if seen_progress and last_chunks_done >= expected_chunks and expected_chunks > 0:
-                log("⛏️ ", f"Region ({rx}, {rz}) done ({last_chunks_done}/{expected_chunks} chunks) in {elapsed:.1f}s")
-                break
-
-            if "not running" in pl or "no tasks" in pl:
-                if seen_progress:
-                    log("⛏️ ", f"Region ({rx}, {rz}) done in {elapsed:.1f}s ({last_chunks_done}/{expected_chunks} chunks)")
-                    break
-                elif elapsed > 30:
-                    log("⚠️ ", f"Region ({rx}, {rz}) — no progress after {elapsed:.0f}s, assuming done")
-                    break
-
-            _time.sleep(2.0)
-
-        # Log region dir state after Chunky task
-        post_files = list(region_dir.glob("*.mca"))
-        log("🔍", f"Region dir after chunky: {len(post_files)} files - {[f.name for f in post_files]}")
-
-        # ── Generation done — save + upload ──────────────────────────
-        def _count_mca_chunks(path):
-            """Count non-empty chunks in a .mca file (1024 header entries)."""
-            try:
-                with open(path, 'rb') as fh:
-                    header = fh.read(4096)
-                count = 0
-                for i in range(1024):
-                    offset_bytes = header[i*4:i*4+3]
-                    if offset_bytes != b'\x00\x00\x00':
-                        count += 1
-                return count
-            except Exception:
-                return 0
-
-        log("💾", "Saving world...")
-        save_resp = rcon.run("save-all")
-        log("💾", f"save-all: {save_resp}")
-        _time.sleep(3)
-        sel_resp = rcon.run("chunky", "selection")
-        log("🔍", f"Selection after save: {sel_resp}")
-        save_files = list(region_dir.glob("*.mca"))
-        log("🔍", f"Region dir after save: {len(save_files)} files - {[f.name for f in save_files]}")
-        _time.sleep(2)
-
-        expected_file = region_dir / f"r.{rx}.{rz}.mca"
-        found = []
-        for attempt in range(60):
-            if expected_file.exists():
-                size1 = expected_file.stat().st_size
-                _time.sleep(0.5)
-                size2 = expected_file.stat().st_size
-                if size1 == size2 and size1 > 0:
-                    chunk_count = _count_mca_chunks(expected_file)
-                    if chunk_count >= expected_chunks:
-                        found.append(expected_file)
-                        log("💾", f"{expected_file.name}: {chunk_count}/{expected_chunks} chunks OK")
-                        break
-                    else:
-                        log("⚠️ ", f"{expected_file.name}: only {chunk_count}/{expected_chunks} chunks, waiting...")
-            _time.sleep(1.0)
-        else:
-            log("⚠️ ", f"Expected {expected_file.name} not found/stable after 60s, checking all files...")
-            for f in region_dir.glob("*.mca"):
-                size1 = f.stat().st_size
-                _time.sleep(0.5)
-                size2 = f.stat().st_size
-                if size1 == size2 and size1 > 0:
-                    found.append(f)
-
-        rcon.run("save-off")
-
-        try:
-            all_hashes = {}
-
-            if not found:
-                log("❌", f"No .mca files found for region ({rx}, {rz})")
-                all_files = list(region_dir.glob("*.mca"))
-                log("🔍", f"Files in region dir: {[f.name for f in all_files]}")
-            else:
-                for mca_path in found:
-                    file_hash = hashlib.sha256()
-                    with open(mca_path, "rb") as fh:
-                        for chunk in iter(lambda: fh.read(1024 * 64), b""):
-                            file_hash.update(chunk)
-                    hex_hash = file_hash.hexdigest()
-
-                    try:
-                        uploader.upload_file(batch_id, mca_path)
-                        log("📤", f"Uploaded {mca_path.name} ({mca_path.stat().st_size} bytes)")
-                        all_hashes[mca_path.name] = hex_hash
-                    except Exception as e:
-                        log("❌", f"Upload failed for {mca_path.name}: {e}")
-
-            if all_hashes:
-                log("🔑", f"Submitting {len(all_hashes)} hash(es) for batch #{batch_id}...")
-                try:
-                    submit_result = uploader.submit_hashes(batch_id, all_hashes)
-                    log("🔑", f"Submit result: {submit_result}")
-                except Exception as e:
-                    log("❌", f"Hash submission failed: {e}")
-            else:
-                log("⚠️", f"No files uploaded for batch #{batch_id}, skipping hash submission")
-        finally:
-            rcon.run("save-on")
-
-    rcon.disconnect()
-    mc_log_stop.set()
-    server.stop()
-    log("🛑", "Server stopped")
-
-    print()
-    print("=" * 50)
-    log("✅", f"Done! {batch_count} batch(es) completed")
-    print(f"  Dashboard: http://localhost:8000/admin")
-    print(f"  Map:       http://localhost:8000/admin/map")
-    print("=" * 50)
-
-
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="ChunkDMesh Client")
+    parser.add_argument("--bg", "--background", action="store_true", help="Run in background mode (no TUI)")
+    args = parser.parse_args()
+    main(bg=args.bg)
