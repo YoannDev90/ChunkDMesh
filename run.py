@@ -57,6 +57,25 @@ def run_client(host=None, port=None, bg=False):
     client_main(bg=bg)
 
 
+def run_client_thread(both_tui=None):
+    """Run client main() in a thread, reporting errors to BothTUI."""
+    try:
+        _spec = importlib.util.spec_from_file_location("client_main", os.path.join(CLIENT_DIR, "main.py"))
+        _mod = importlib.util.module_from_spec(_spec)
+        _spec.loader.exec_module(_mod)
+        _mod.main(bg=True)
+    except Exception as exc:
+        import traceback
+
+        msg = f"{exc}\n{traceback.format_exc()[-300:]}"
+        if both_tui:
+            both_tui.set_client_error(str(exc))
+        print(f"\n  [CLIENT ERROR] {msg}", file=sys.stderr)
+    finally:
+        if both_tui:
+            both_tui.set_client_done()
+
+
 def run_both(host="0.0.0.0", port=8000, world_config=None):
     """Start server in background thread + client with unified TUI."""
     connect_host = host if host != "0.0.0.0" else "127.0.0.1"
@@ -85,28 +104,27 @@ def run_both(host="0.0.0.0", port=8000, world_config=None):
         print("  Server failed to start")
         sys.exit(1)
 
-    # Start client with unified TUI
+    # Import client modules
     os.chdir(CLIENT_DIR)
     sys.path.insert(0, CLIENT_DIR)
     import client_tui as ct_mod
     from both_tui import BothTUI
 
-    # Use the existing module-level instance — same one main() imports
+    # Use the existing module-level instance — same one client main() imports
     client_tui = ct_mod.tui
     both_tui = BothTUI(client_tui)
 
-    # Start unified TUI in a thread
-    tui_thread = threading.Thread(target=both_tui.run, daemon=True)
-    tui_thread.start()
+    # Start client in a daemon thread — errors reported to BothTUI
+    client_thread = threading.Thread(target=run_client_thread, args=(both_tui,), daemon=True)
+    client_thread.start()
 
-    # Run client logic (bg=True skips client's own TUI thread)
-    _spec = importlib.util.spec_from_file_location("client_main", os.path.join(CLIENT_DIR, "main.py"))
-    _mod = importlib.util.module_from_spec(_spec)
-    _spec.loader.exec_module(_mod)
-    _mod.main(bg=True)
-
-    both_tui.stop()
-    tui_thread.join(timeout=2)
+    # Run TUI in main thread (stays alive if client crashes)
+    try:
+        both_tui.run()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        both_tui.stop()
 
 
 def main():

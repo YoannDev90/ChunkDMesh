@@ -2,6 +2,7 @@
 
 import re
 import time
+import traceback
 
 from client_tui import ClientTUI
 from monitor import monitor, sample_system
@@ -18,11 +19,11 @@ from state import server_state
 class BothTUI:
     """Single TUI combining server stats and client progress."""
 
-    MAX_LOG = 50
-
     def __init__(self, client_tui: ClientTUI):
         self.client_tui = client_tui
         self._running = False
+        self._client_error: str | None = None
+        self._client_done = False
         self._progress_bar = Progress(
             BarColumn(),
             TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
@@ -30,26 +31,51 @@ class BothTUI:
         )
         self._progress_task = self._progress_bar.add_task("Idle", total=100)
 
+    def set_client_error(self, error: str):
+        self._client_error = error
+
+    def set_client_done(self):
+        self._client_done = True
+
     def run(self):
         self._running = True
         layout = self._build_layout()
         try:
             with Live(layout, refresh_per_second=4, screen=True) as _live:
                 while self._running:
-                    try:
-                        layout["header"].update(self._render_header())
-                        layout["body"]["left"]["status_panel"].update(self._render_client_status())
-                        layout["body"]["left"]["progress_panel"].update(self._render_progress())
-                        layout["body"]["left"]["steps_panel"].update(self._render_steps())
-                        layout["body"]["right"]["server_stats"].update(self._render_server_stats())
-                        layout["body"]["right"]["server_requests"].update(self._render_server_requests())
-                        layout["body"]["right"]["server_system"].update(self._render_server_system())
-                        layout["footer"].update(self._render_footer())
-                    except Exception as exc:
-                        layout["footer"].update(Panel(f"[red]Render error: {exc}[/red]", border_style="red"))
+                    self._safe_update(layout, "header", self._render_header)
+                    self._safe_update(layout, "body", self._render_client_status, "left", "status_panel")
+                    self._safe_update(layout, "body", self._render_progress, "left", "progress_panel")
+                    self._safe_update(layout, "body", self._render_steps, "left", "steps_panel")
+                    self._safe_update(layout, "body", self._render_server_stats, "right", "server_stats")
+                    self._safe_update(layout, "body", self._render_server_requests, "right", "server_requests")
+                    self._safe_update(layout, "body", self._render_server_system, "right", "server_system")
+                    self._safe_update(layout, "footer", self._render_footer)
                     time.sleep(0.25)
         except KeyboardInterrupt:
             pass
+        finally:
+            self._running = False
+
+    def _safe_update(self, layout, *path_and_fn):
+        """Update a layout panel, catching and displaying any exception."""
+        try:
+            fn = path_and_fn[1]
+            panel = fn()
+            # Navigate layout path: layout["body"]["left"]["status_panel"]
+            node = layout
+            for key in path_and_fn[2:]:
+                node = node[key]
+            node.update(panel)
+        except Exception as exc:
+            tb = traceback.format_exc()
+            try:
+                node = layout
+                for key in path_and_fn[2:]:
+                    node = node[key]
+                node.update(Panel(f"[red]{exc}[/red]\n{tb[-200:]}", border_style="red", title="Error"))
+            except Exception:
+                pass
 
     def stop(self):
         self._running = False
@@ -86,6 +112,13 @@ class BothTUI:
             url = self.client_tui._server_url
             score = self.client_tui._power_score
 
+        client_info = f" {url}" if url else ""
+        score_info = f" | score={score:.1f}" if score else ""
+        if self._client_error:
+            client_info += " [red]ERROR[/red]"
+        elif self._client_done:
+            client_info += " [dim]done[/dim]"
+
         text = Text.assemble(
             ("ChunkDMesh", "bold cyan"),
             " | ",
@@ -93,8 +126,8 @@ class BothTUI:
             (f" {uptime_str} | {srv_stats.request_count} reqs", ""),
             " | ",
             ("Client", "bold green"),
-            (f" {url}" if url else "", "cyan"),
-            (f" | score={score:.1f}" if score else "", "yellow"),
+            (client_info, "cyan"),
+            (score_info, "yellow"),
         )
         return Panel(text, style="black")
 
@@ -118,6 +151,8 @@ class BothTUI:
         if region:
             table.add_row("Region", region)
         table.add_row("Batches", str(batch))
+        if self._client_error:
+            table.add_row("Error", Text(self._client_error[:80], style="red"))
         return Panel(table, title="Client Status", border_style="blue")
 
     def _render_progress(self) -> Panel:
@@ -203,12 +238,19 @@ class BothTUI:
         return Panel(table, title="System", border_style="cyan")
 
     def _render_footer(self) -> Panel:
+        lines = []
+        if self._client_error:
+            lines.append(("", "❌", self._client_error[:100]))
         with self.client_tui._lock:
-            lines = list(self.client_tui._log_buffer)
+            client_lines = list(self.client_tui._log_buffer)
+        lines.extend(client_lines[-3:])
+
         table = Table(box=None, padding=(0, 1), show_header=False)
         table.add_column("Time", style="dim", width=8)
         table.add_column("Icon", width=2)
         table.add_column("Message")
-        for ts, icon, msg in lines[-3:]:
+        for ts, icon, msg in lines[-4:]:
             table.add_row(ts, icon, msg[:120])
+        if not lines:
+            table.add_row("", "", "Waiting...")
         return Panel(table, title="Log", border_style="magenta")
