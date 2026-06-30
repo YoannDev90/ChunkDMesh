@@ -88,22 +88,19 @@ def run_both(host="0.0.0.0", port=8000, world_config=None):
     os.chdir(CLIENT_DIR)
     sys.path.insert(0, CLIENT_DIR)
     from both_tui import BothTUI
-    from client_tui import ClientTUI
-    from main import main as client_main
-
-    client_tui = ClientTUI()
-    both_tui = BothTUI(client_tui)
-
-    # Patch client_tui module-level functions to route through client_tui instance
     import client_tui as ct_mod
 
-    ct_mod.tui = client_tui
+    # Use the existing module-level instance — same one main() imports
+    client_tui = ct_mod.tui
+    both_tui = BothTUI(client_tui)
 
     # Start unified TUI in a thread
     tui_thread = threading.Thread(target=both_tui.run, daemon=True)
     tui_thread.start()
 
     # Run client logic (bg=True skips client's own TUI thread)
+    from main import main as client_main
+
     client_main(bg=True)
 
     both_tui.stop()

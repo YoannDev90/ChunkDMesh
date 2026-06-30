@@ -32,20 +32,23 @@ class BothTUI:
         )
         self._progress_task = self._progress_bar.add_task("Idle", total=100)
 
+        # Panel layout references — built in _build_layout
+        self.p: dict[str, Layout] = {}
+
     def run(self):
         self._running = True
         layout = self._build_layout()
         try:
             with Live(layout, refresh_per_second=4, screen=True, console=self.console):
                 while self._running:
-                    layout["header"].update(self._render_header())
-                    layout["body"]["left"]["status_panel"].update(self._render_client_status())
-                    layout["body"]["left"]["progress_panel"].update(self._render_progress())
-                    layout["body"]["left"]["steps_panel"].update(self._render_steps())
-                    layout["body"]["right"]["server_stats"].update(self._render_server_stats())
-                    layout["body"]["right"]["server_requests"].update(self._render_server_requests())
-                    layout["body"]["right"]["server_system"].update(self._render_server_system())
-                    layout["footer"].update(self._render_footer())
+                    self.p["header"].update(self._render_header())
+                    self.p["status_panel"].update(self._render_client_status())
+                    self.p["progress_panel"].update(self._render_progress())
+                    self.p["steps_panel"].update(self._render_steps())
+                    self.p["server_stats"].update(self._render_server_stats())
+                    self.p["server_requests"].update(self._render_server_requests())
+                    self.p["server_system"].update(self._render_server_system())
+                    self.p["footer"].update(self._render_footer())
                     time.sleep(0.25)
         except KeyboardInterrupt:
             pass
@@ -54,27 +57,41 @@ class BothTUI:
         self._running = False
 
     def _build_layout(self) -> Layout:
-        layout = Layout()
-        layout.split_column(
-            Layout(name="header", size=3),
-            Layout(name="body"),
-            Layout(name="footer", size=3),
-        )
-        layout["body"].split_row(
-            Layout(name="left"),
-            Layout(name="right"),
-        )
-        layout["body"]["left"].split_column(
-            Layout(name="status_panel", ratio=2),
-            Layout(name="progress_panel", ratio=1),
-            Layout(name="steps_panel", ratio=1),
-        )
-        layout["body"]["right"].split_column(
-            Layout(name="server_stats", ratio=1),
-            Layout(name="server_requests", ratio=2),
-            Layout(name="server_system", ratio=1),
-        )
-        return layout
+        root = Layout(name="root")
+
+        header = Layout(name="header", size=3)
+        footer = Layout(name="footer", size=3)
+        body = Layout(name="body", ratio=2)
+
+        left = Layout(name="left", ratio=2)
+        right = Layout(name="right")
+
+        status_panel = Layout(name="status_panel", ratio=2)
+        progress_panel = Layout(name="progress_panel", ratio=1)
+        steps_panel = Layout(name="steps_panel", ratio=1)
+
+        server_stats = Layout(name="server_stats", ratio=1)
+        server_requests = Layout(name="server_requests", ratio=2)
+        server_system = Layout(name="server_system", ratio=1)
+
+        # Store references for direct update()
+        self.p = {
+            "header": header,
+            "footer": footer,
+            "status_panel": status_panel,
+            "progress_panel": progress_panel,
+            "steps_panel": steps_panel,
+            "server_stats": server_stats,
+            "server_requests": server_requests,
+            "server_system": server_system,
+        }
+
+        # Build tree
+        left.split_column(status_panel, progress_panel, steps_panel)
+        right.split_column(server_stats, server_requests, server_system)
+        body.split_row(left, right)
+        root.split_column(header, body, footer)
+        return root
 
     def _render_header(self) -> Panel:
         srv_stats = server_state.snapshot()
