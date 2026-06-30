@@ -3,6 +3,7 @@
 
 import argparse
 import asyncio
+import importlib.util
 import os
 import sys
 import threading
@@ -87,8 +88,8 @@ def run_both(host="0.0.0.0", port=8000, world_config=None):
     # Start client with unified TUI
     os.chdir(CLIENT_DIR)
     sys.path.insert(0, CLIENT_DIR)
-    from both_tui import BothTUI
     import client_tui as ct_mod
+    from both_tui import BothTUI
 
     # Use the existing module-level instance — same one main() imports
     client_tui = ct_mod.tui
@@ -99,9 +100,10 @@ def run_both(host="0.0.0.0", port=8000, world_config=None):
     tui_thread.start()
 
     # Run client logic (bg=True skips client's own TUI thread)
-    from main import main as client_main
-
-    client_main(bg=True)
+    _spec = importlib.util.spec_from_file_location("client_main", os.path.join(CLIENT_DIR, "main.py"))
+    _mod = importlib.util.module_from_spec(_spec)
+    _spec.loader.exec_module(_mod)
+    _mod.main(bg=True)
 
     both_tui.stop()
     tui_thread.join(timeout=2)
