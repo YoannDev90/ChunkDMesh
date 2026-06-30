@@ -12,25 +12,22 @@ SERVER_DIR = os.path.join(ROOT, "server")
 CLIENT_DIR = os.path.join(ROOT, "client")
 
 
-def run_server(host="0.0.0.0", port=8000, world_config=None, raw_cli=False):
+def run_server(host="0.0.0.0", port=8000, world_config=None):
     os.environ["CHUNKMESH_HOST"] = host
     os.environ["CHUNKMESH_PORT"] = str(port)
     if world_config:
         os.environ["CHUNKMESH_CONFIG_PATH"] = os.path.abspath(world_config)
-    if raw_cli:
-        os.environ["CHUNKMESH_RAW_CLI"] = "1"
     os.chdir(SERVER_DIR)
     sys.path.insert(0, SERVER_DIR)
     from main import main
 
-    asyncio.run(main(raw_cli=raw_cli))
+    asyncio.run(main())
 
 
 def run_server_thread(host="0.0.0.0", port=8000, world_config=None):
     """Start server in a daemon thread (no TUI)."""
     os.environ["CHUNKMESH_HOST"] = host
     os.environ["CHUNKMESH_PORT"] = str(port)
-    os.environ["CHUNKMESH_RAW_CLI"] = "1"
     if world_config:
         os.environ["CHUNKMESH_CONFIG_PATH"] = os.path.abspath(world_config)
 
@@ -39,7 +36,7 @@ def run_server_thread(host="0.0.0.0", port=8000, world_config=None):
         sys.path.insert(0, SERVER_DIR)
         from main import main
 
-        asyncio.run(main(raw_cli=True))
+        asyncio.run(main())
 
     t = threading.Thread(target=_server_loop, daemon=True)
     t.start()
@@ -64,7 +61,7 @@ def run_both(host="0.0.0.0", port=8000, world_config=None):
     connect_host = host if host != "0.0.0.0" else "127.0.0.1"
     os.environ["CHUNKMESH_SERVER_URL"] = f"http://{connect_host}:{port}"
 
-    # Start server in daemon thread (no TUI)
+    # Start server in daemon thread
     run_server_thread(host, port, world_config)
 
     # Wait for server to be ready
@@ -106,7 +103,7 @@ def run_both(host="0.0.0.0", port=8000, world_config=None):
     tui_thread = threading.Thread(target=both_tui.run, daemon=True)
     tui_thread.start()
 
-    # Run client logic (no TUI thread — we handle it via BothTUI)
+    # Run client logic (bg=True skips client's own TUI thread)
     client_main(bg=True)
 
     both_tui.stop()
@@ -141,15 +138,10 @@ def main():
         action="store_true",
         help="Run client in background mode (no TUI)",
     )
-    parser.add_argument(
-        "--raw-cli",
-        action="store_true",
-        help="Run server in raw CLI mode (no TUI, plain output)",
-    )
     args = parser.parse_args()
 
     if args.component == "server":
-        run_server(args.host, args.port, args.world_config, raw_cli=args.raw_cli)
+        run_server(args.host, args.port, args.world_config)
     elif args.component == "client":
         run_client(args.host, args.port, bg=args.bg)
     elif args.component == "both":

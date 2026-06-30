@@ -78,7 +78,6 @@ Starts server in background and client in foreground with a **unified TUI** that
 | `--port PORT` | Server port (default: `8000`) |
 | `--world-config PATH` | Path to world config JSON5 file |
 | `--bg` / `--background` | Client background mode (no TUI, plain output) |
-| `--raw-cli` | Server raw CLI mode (no TUI, plain output) |
 
 Examples:
 
@@ -88,9 +87,6 @@ uv run python run.py server --port 9000 --world-config my_world.json5
 
 # Background client (logs to stdout)
 uv run python run.py client --bg
-
-# Server without TUI (for systemd / Docker)
-uv run python run.py server --raw-cli
 ```
 
 ### Direct module launch
