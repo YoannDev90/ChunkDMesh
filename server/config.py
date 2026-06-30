@@ -1,20 +1,15 @@
-import asyncio
+import enum
 import math
 import os
 import random
+import threading
 from pathlib import Path
-from typing import Optional
 
 import json5
-from mc_utils import (get_chunky_version, get_loader_version,
-                      get_minecraft_versions)
 
 
-class ChunkyShape:
-    """
-    https://github.com/pop4959/Chunky/wiki/Shapes
-    """
-
+class ChunkyShape(enum.Enum):
+    """https://github.com/pop4959/Chunky/wiki/Shapes"""
     SQUARE = "square"
     CIRCLE = "circle"
     TRIANGLE = "triangle"
@@ -24,50 +19,56 @@ class ChunkyShape:
     STAR = "star"
 
 
-class ChunkyPattern:
-    """
-    https://github.com/pop4959/Chunky/wiki/Patterns
-    """
-
+class ChunkyPattern(enum.Enum):
+    """https://github.com/pop4959/Chunky/wiki/Patterns"""
     REGIONS = "regions"
     CONCENTRIC = "concentric"
     LOOP = "loop"
     SPIRAL = "spiral"
 
 
-class ChunkyDimension:
+class ChunkyDimension(enum.Enum):
     OVERWORLD = "overworld"
     NETHER = "nether"
     END = "end"
     CUSTOM = "custom"
 
 
-class SupportedLoaders:
+class SupportedLoaders(enum.Enum):
     FABRIC = "fabric"
     FORGE = "forge"
     QUILT = "quilt"
     NEOFORGE = "neoforge"
 
 
+_config_lock = threading.Lock()
+
+
 class Config:
-    _instances: dict[str, 'Config'] = {}
+    _instances: dict[str, "Config"] = {}
     _initialized: set[str] = set()
 
     def __new__(cls, path: str | None = None):
         if path is None:
-            path = os.environ.get("CHUNKMESH_CONFIG_PATH") or str(Path(__file__).resolve().parent.parent / "data" / "world_config.json5")
-        if path in cls._instances:
-            return cls._instances[path]
-        instance = super().__new__(cls)
-        cls._instances[path] = instance
-        return instance
+            path = os.environ.get("CHUNKMESH_CONFIG_PATH") or str(
+                Path(__file__).resolve().parent.parent / "data" / "world_config.json5"
+            )
+        with _config_lock:
+            if path in cls._instances:
+                return cls._instances[path]
+            instance = super().__new__(cls)
+            cls._instances[path] = instance
+            return instance
 
     def __init__(self, path: str | None = None):
         if path is None:
-            path = os.environ.get("CHUNKMESH_CONFIG_PATH") or str(Path(__file__).resolve().parent.parent / "data" / "world_config.json5")
-        if path in self._initialized:
-            return
-        self._initialized.add(path)
+            path = os.environ.get("CHUNKMESH_CONFIG_PATH") or str(
+                Path(__file__).resolve().parent.parent / "data" / "world_config.json5"
+            )
+        with _config_lock:
+            if path in self._initialized:
+                return
+            self._initialized.add(path)
         self.path = path
         self.config = load_config(path)
         self._validated = False
@@ -91,7 +92,7 @@ class Config:
         self._normalize_defaults()
 
     @staticmethod
-    def _clean_str(value) -> Optional[str]:
+    def _clean_str(value) -> str | None:
         if value is None:
             return None
         if isinstance(value, float) and math.isnan(value):
@@ -106,10 +107,10 @@ class Config:
         if (
             isinstance(self.center[0], (int, float))
             and isinstance(self.center[1], (int, float))
+            and (math.isnan(self.center[0]) or math.isnan(self.center[1]))
         ):
-            if math.isnan(self.center[0]) or math.isnan(self.center[1]):
-                self.center = [None, None]
-                self.use_spawn_as_center = True
+            self.center = [None, None]
+            self.use_spawn_as_center = True
 
         if self.center[0] is None or self.center[1] is None:
             self.center = [None, None]
@@ -121,17 +122,15 @@ class Config:
         if math.isnan(self.seed):
             self.seed = random.randint(-(10**18), 10**18)
 
-        valid_dimensions = [
-            d for d in vars(ChunkyDimension).values() if isinstance(d, str)
-        ]
+        valid_dimensions = [d.value for d in ChunkyDimension]
         if self.dimension not in valid_dimensions:
             raise ValueError(f"Invalid dimension: {self.dimension}")
 
-        valid_shapes = [s for s in vars(ChunkyShape).values() if isinstance(s, str)]
+        valid_shapes = [s.value for s in ChunkyShape]
         if self.shape not in valid_shapes:
             raise ValueError(f"Invalid shape: {self.shape}")
 
-        valid_patterns = [s for s in vars(ChunkyPattern).values() if isinstance(s, str)]
+        valid_patterns = [p.value for p in ChunkyPattern]
         if self.pattern not in valid_patterns:
             raise ValueError(f"Invalid pattern: {self.pattern}")
 
@@ -149,9 +148,11 @@ class Config:
         if self._validated:
             return
 
-        supported_loaders = [
-            l for l in vars(SupportedLoaders).values() if isinstance(l, str)
-        ]
+        from mc_modrinth import get_chunky_version
+        from mc_utils import get_loader_version
+        from mc_versions import get_minecraft_versions
+
+        supported_loaders = [loader.value for loader in SupportedLoaders]
         if self.minecraft_loader not in supported_loaders:
             raise ValueError(f"Invalid Minecraft loader: {self.minecraft_loader}")
 
@@ -212,6 +213,5 @@ class Config:
 
 
 def load_config(path: str = "data/world_config.json5") -> dict:
-    with open(path, "r") as f:
-        config = json5.load(f)
-    return config
+    with open(path) as f:
+        return json5.load(f)

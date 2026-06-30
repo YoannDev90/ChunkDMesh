@@ -1,10 +1,10 @@
 import asyncio
-from pathlib import Path
 
-from db import init_db
 from api import run_api
+from db import init_db
 from logging_utils import setup_logging
 from tasker import fill_tasks_table
+
 
 async def main() -> None:
     setup_logging()

@@ -10,15 +10,11 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime
-from typing import List, Optional
-
-from sqlalchemy import (BIGINT, DateTime, ForeignKey, Integer, String, Text,
-                        func, UniqueConstraint)
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlalchemy.orm import (Mapped, declarative_base, mapped_column,
-                            relationship, sessionmaker)
-
 from pathlib import Path
+
+from sqlalchemy import BIGINT, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.orm import Mapped, declarative_base, mapped_column, relationship, sessionmaker
 
 _DB_DIR = Path(__file__).resolve().parent.parent / "data"
 _DB_DIR.mkdir(parents=True, exist_ok=True)
@@ -31,13 +27,13 @@ class Client(Base):
     __tablename__ = "clients"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    token: Mapped[Optional[str]] = mapped_column(String(128), unique=True)
-    ip: Mapped[Optional[str]] = mapped_column(String(45))
-    power_score: Mapped[Optional[float]] = mapped_column()
-    benchmark_score: Mapped[Optional[float]] = mapped_column()
-    last_seen: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    token: Mapped[str | None] = mapped_column(String(128), unique=True)
+    ip: Mapped[str | None] = mapped_column(String(45))
+    power_score: Mapped[float | None] = mapped_column()
+    benchmark_score: Mapped[float | None] = mapped_column()
+    last_seen: Mapped[datetime | None] = mapped_column(DateTime)
 
-    batches: Mapped[List["Batch"]] = relationship("Batch", back_populates="client")
+    batches: Mapped[list[Batch]] = relationship("Batch", back_populates="client")
 
 
 class World(Base):
@@ -46,11 +42,11 @@ class World(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     seed: Mapped[int] = mapped_column(BIGINT, nullable=False)
-    mc_version: Mapped[Optional[str]] = mapped_column(String(50))
-    loader_type: Mapped[Optional[str]] = mapped_column(String(50))
+    mc_version: Mapped[str | None] = mapped_column(String(50))
+    loader_type: Mapped[str | None] = mapped_column(String(50))
     status: Mapped[str] = mapped_column(String(50), default="pending")
 
-    batches: Mapped[List["Batch"]] = relationship("Batch", back_populates="world")
+    batches: Mapped[list[Batch]] = relationship("Batch", back_populates="world")
 
 
 class Batch(Base):
@@ -61,18 +57,18 @@ class Batch(Base):
     region_x: Mapped[int] = mapped_column(Integer, nullable=False)
     region_z: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[str] = mapped_column(String(50), default="pending")
-    assigned_to: Mapped[Optional[int]] = mapped_column(ForeignKey("clients.id"))
+    assigned_to: Mapped[int | None] = mapped_column(ForeignKey("clients.id"))
     retry_count: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), onupdate=func.now()
     )
 
-    world: Mapped["World"] = relationship("World", back_populates="batches")
-    client: Mapped[Optional["Client"]] = relationship(
+    world: Mapped[World] = relationship("World", back_populates="batches")
+    client: Mapped[Client | None] = relationship(
         "Client", back_populates="batches"
     )
-    validations: Mapped[List["Validation"]] = relationship(
+    validations: Mapped[list[Validation]] = relationship(
         "Validation", back_populates="batch"
     )
 
@@ -94,10 +90,10 @@ class Validation(Base):
     batch_id: Mapped[int] = mapped_column(ForeignKey("batches.id"), nullable=False)
     client_id: Mapped[int] = mapped_column(ForeignKey("clients.id"), nullable=False)
     file_hash: Mapped[str] = mapped_column(String(128), nullable=False)
-    storage_path: Mapped[Optional[str]] = mapped_column(Text)
+    storage_path: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
-    batch: Mapped["Batch"] = relationship("Batch", back_populates="validations")
+    batch: Mapped[Batch] = relationship("Batch", back_populates="validations")
 
 
 # Async engine & session factory

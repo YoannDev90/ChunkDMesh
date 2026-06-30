@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -19,9 +18,9 @@ class S3Storage:
     def __init__(
         self,
         bucket: str,
-        endpoint_url: Optional[str] = None,
-        aws_access_key_id: Optional[str] = None,
-        aws_secret_access_key: Optional[str] = None,
+        endpoint_url: str | None = None,
+        aws_access_key_id: str | None = None,
+        aws_secret_access_key: str | None = None,
         region: str = "auto",
         prefix: str = "",
     ):
@@ -39,8 +38,8 @@ class S3Storage:
 
         try:
             import boto3
-        except ImportError:
-            raise RuntimeError("boto3 is required for S3 storage. Install with: pip install boto3")
+        except ImportError as e:
+            raise RuntimeError("boto3 is required for S3 storage. Install with: pip install boto3") from e
 
         kwargs = {"region_name": self._region}
         if self._endpoint_url:
@@ -104,7 +103,7 @@ class S3Storage:
         return url
 
 
-def create_storage_from_env() -> Optional[S3Storage]:
+def create_storage_from_env() -> S3Storage | None:
     import os
 
     bucket = os.environ.get("CHUNKDMESH_S3_BUCKET")

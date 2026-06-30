@@ -1,101 +1,44 @@
-from sqlalchemy import func, select
-from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+"""Task generation and client assignment."""
 
-from config import Config, ChunkyShape
-from db import Task, Client, Batch, World, get_db_session
+from __future__ import annotations
+
+import logging
 import math
+
+from config import Config
+from db import Batch, Task, World, get_db_session
+from geometry import generate_spiral_order, is_inside_shape
+from sqlalchemy import func, select
+
+logger = logging.getLogger(__name__)
 
 MAX_ASSIGNMENTS = 2
 
 
-def generate_spiral_order(radius_regions: int):
-    """
-    Generate region coordinates in concentric rings from center (0,0).
-    Yields (rx, rz) tuples ordered by distance from center.
-    """
-    # Ring 0: just (0,0)
-    yield (0, 0)
-
-    # Rings 1, 2, ...
-    for ring in range(1, radius_regions + 1):
-        # Generate all coordinates at exactly this ring distance
-        coords = []
-
-        # Top edge (z = -ring, x from -ring to ring)
-        for x in range(-ring, ring + 1):
-            coords.append((x, -ring))
-
-        # Right edge (x = ring, z from -ring+1 to ring)
-        for z in range(-ring + 1, ring + 1):
-            coords.append((ring, z))
-
-        # Bottom edge (z = ring, x from ring-1 down to -ring)
-        for x in range(ring - 1, -ring - 1, -1):
-            coords.append((x, ring))
-
-        # Left edge (x = -ring, z from ring-1 down to -ring+1)
-        for z in range(ring - 1, -ring, -1):
-            coords.append((-ring, z))
-
-        # Sort by actual distance from center, then by angle for consistent ordering
-        coords.sort(key=lambda c: (c[0]**2 + c[1]**2, math.atan2(c[1], c[0])))
-
-        for coord in coords:
-            yield coord
-
-
 async def fill_tasks_table(config: Config):
-    """
-    Fills the tasks table with regions based on the configured radius and shape.
-    Radius is in chunks, but we group tasks by regions (32x32 chunks).
-    Tasks are inserted in spiral-ordered by concentric rings from center (0,0).
-    """
+    """Fills the tasks table with regions in spiral order from center."""
     async with get_db_session() as session:
         existing = await session.execute(select(func.count(Task.id)))
         if existing.scalar() > 0:
-            print("Tasks table already populated, skipping fill.")
+            logger.info("Tasks table already populated, skipping fill.")
             return
 
         radius_chunks = config.radius
         shape = config.shape
-
-        # Convert chunk radius to region radius
         radius_regions = math.ceil(radius_chunks / 32)
 
-        print(f"Filling tasks table with shape {shape} and radius {radius_chunks} chunks ({radius_regions} regions)...")
+        logger.info(
+            "Filling tasks table with shape %s and radius %d chunks (%d regions)...",
+            shape, radius_chunks, radius_regions,
+        )
 
         tasks_to_add = []
-        batch_size = 1000
-
-        # Generate all candidate regions in spiral order
-        spiral_coords = list(generate_spiral_order(radius_regions))
-
-        for rx, rz in spiral_coords:
-            is_inside = False
-
-            # Check if this region is within reaching distance of the shape
-            # (Simple center-based check for regions)
+        for rx, rz in generate_spiral_order(radius_regions):
             cx, cz = rx * 32, rz * 32
-
-            if shape == ChunkyShape.SQUARE:
-                is_inside = True
-            elif shape == ChunkyShape.CIRCLE:
-                if (cx ** 2 + cz ** 2) <= radius_chunks ** 2:
-                    is_inside = True
-            elif shape in [ChunkyShape.DIAMOND, ChunkyShape.TRIANGLE]:
-                if abs(cx) + abs(cz) <= radius_chunks:
-                    is_inside = True
-            elif shape in [ChunkyShape.HEXAGON, ChunkyShape.PENTAGON, ChunkyShape.STAR]:
-                # Simplified logic for complex shapes
-                if (cx ** 2 + cz ** 2) <= radius_chunks ** 2:
-                    is_inside = True
-            else:
-                is_inside = True
-
-            if is_inside:
+            if is_inside_shape(cx, cz, shape, radius_chunks):
                 tasks_to_add.append(Task(region_x=rx, region_z=rz))
 
-            if len(tasks_to_add) >= batch_size:
+            if len(tasks_to_add) >= 1000:
                 session.add_all(tasks_to_add)
                 await session.commit()
                 tasks_to_add = []
@@ -104,28 +47,18 @@ async def fill_tasks_table(config: Config):
             session.add_all(tasks_to_add)
             await session.commit()
 
-    print("Tasks table filled in spiral order from center.")
+    logger.info("Tasks table filled in spiral order from center.")
 
 
 async def attribute_tasks_to_client(client_id: int):
-    """
-    Assign next available task(s) to client in spiral order from center.
-    Returns single region (or small batch) from the next available ring.
-    """
-    SIZE = 1  # One region at a time for immediate upload
-
+    """Assign next available task to client in spiral order from center."""
     config = Config()
     await config.validate()
-    verification = config.verification
-    max_assign = MAX_ASSIGNMENTS if verification else 1
+    max_assign = MAX_ASSIGNMENTS if config.verification else 1
 
     async with get_db_session() as session:
         count_subq = (
-            select(
-                Batch.region_x,
-                Batch.region_z,
-                Batch.id.label("batch_id"),
-            )
+            select(Batch.region_x, Batch.region_z, Batch.id.label("batch_id"))
             .where(Batch.status.in_(["assigned", "working", "completed", "validated"]))
             .subquery()
         )
@@ -143,8 +76,8 @@ async def attribute_tasks_to_client(client_id: int):
             )
             .group_by(Task.id)
             .having(func.count(count_subq.c.batch_id) < max_assign)
-            .order_by(Task.region_x * Task.region_x + Task.region_z * Task.region_z)  # Closest to center first
-            .limit(SIZE)
+            .order_by(Task.region_x * Task.region_x + Task.region_z * Task.region_z)
+            .limit(1)
         )
 
         result = await session.execute(task_counts)
@@ -154,7 +87,7 @@ async def attribute_tasks_to_client(client_id: int):
         raise ValueError("No available tasks")
 
     region_coords = [(row.region_x, row.region_z) for row in rows]
-    print(f"Attributing {len(region_coords)} tasks to client {client_id}: {region_coords}")
+    logger.info("Attributing %d tasks to client %s: %s", len(region_coords), client_id, region_coords)
 
     async with get_db_session() as session:
         world_result = await session.execute(

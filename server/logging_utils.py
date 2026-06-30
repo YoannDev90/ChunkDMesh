@@ -16,7 +16,7 @@ class ColoredFormatter(logging.Formatter):
         logging.CRITICAL: Fore.MAGENTA,
     }
 
-    def formatTime(self, record, datefmt=None):
+    def formatTime(self, record, datefmt=None):  # noqa: N802
         dt = datetime.datetime.fromtimestamp(record.created)
         if datefmt:
             return dt.strftime(datefmt)
@@ -39,7 +39,7 @@ _BASE_DIR = Path(__file__).resolve().parent
 def load_logging_config(path=None):
     if path is None:
         path = str(_BASE_DIR / "config" / "logging_config.json5")
-    with open(path, "r") as f:
+    with open(path) as f:
         config = json5.load(f)
     return config.get("logging_lib_config")
 
