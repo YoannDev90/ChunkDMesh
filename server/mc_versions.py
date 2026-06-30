@@ -8,7 +8,7 @@ import httpx
 from mc_utils import get_http_client
 
 CACHE_DURATION_SECONDS = 3600
-_latest_mc_version_cache: dict[str, object] = {"value": None, "timestamp": 0}
+_latest_mc_version_cache: dict[str, str | float | None] = {"value": None, "timestamp": 0.0}
 
 
 async def get_latest_minecraft_release_version() -> str:

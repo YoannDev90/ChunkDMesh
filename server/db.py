@@ -14,13 +14,15 @@ from pathlib import Path
 
 from sqlalchemy import BIGINT, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlalchemy.orm import Mapped, declarative_base, mapped_column, relationship, sessionmaker
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, sessionmaker
 
 _DB_DIR = Path(__file__).resolve().parent.parent / "data"
 _DB_DIR.mkdir(parents=True, exist_ok=True)
 DATABASE_URL = f"sqlite+aiosqlite:///{_DB_DIR / 'chunkdmesh.db'}"
 
-Base = declarative_base()
+
+class Base(DeclarativeBase):
+    pass
 
 
 class Client(Base):

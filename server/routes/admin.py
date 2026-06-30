@@ -97,7 +97,7 @@ async def admin_stats(request: Request):
         status_result = await session.execute(select(Batch.status))
         statuses = status_result.scalars().all()
 
-    status_counts = {}
+    status_counts: dict[str, int] = {}
     for s in statuses:
         status_counts[s] = status_counts.get(s, 0) + 1
 
@@ -127,7 +127,7 @@ async def get_progress(request: Request):
         batch_result = await session.execute(select(Batch.status))
         statuses = batch_result.scalars().all()
 
-    status_counts = {}
+    status_counts: dict[str, int] = {}
     for s in statuses:
         status_counts[s] = status_counts.get(s, 0) + 1
 

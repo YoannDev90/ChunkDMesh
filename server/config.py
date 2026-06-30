@@ -75,11 +75,11 @@ class Config:
         self.config = load_config(path)
         self._validated = False
 
-        self.minecraft_version: str = self._clean_str(self.config.get("minecraft_version"))
-        self.minecraft_loader: str = self._clean_str(self.config.get("minecraft_loader"))
-        self.loader_version: str = self._clean_str(self.config.get("loader_version"))
-        self.chunky_version: str = self._clean_str(self.config.get("chunky_version"))
-        self.world_name: str = self.config.get("world_name")
+        self.minecraft_version: str = self._clean_str(self.config.get("minecraft_version")) or ""
+        self.minecraft_loader: str = self._clean_str(self.config.get("minecraft_loader")) or ""
+        self.loader_version: str = self._clean_str(self.config.get("loader_version")) or ""
+        self.chunky_version: str = self._clean_str(self.config.get("chunky_version")) or ""
+        self.world_name: str = self.config.get("world_name") or ""
         self.dimension: str = self.config.get("dimension") or "overworld"
         self.center: list = self.config.get("center") or [float("nan"), float("nan")]
         self.seed: float = self.config.get("seed") or float("nan")
