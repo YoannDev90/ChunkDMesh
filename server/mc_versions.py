@@ -8,23 +8,22 @@ import httpx
 from mc_utils import get_http_client
 
 CACHE_DURATION_SECONDS = 3600
-_latest_mc_version_cache: dict[str, str | float | None] = {"value": None, "timestamp": 0.0}
+_latest_mc_version_value: str | None = None
+_latest_mc_version_timestamp: float = 0.0
 
 
 async def get_latest_minecraft_release_version() -> str:
     """Retrieves the latest Minecraft release version, cached for 1 hour."""
+    global _latest_mc_version_value, _latest_mc_version_timestamp
     current_time = time.time()
-    if (
-        _latest_mc_version_cache["value"]
-        and (current_time - _latest_mc_version_cache["timestamp"]) < CACHE_DURATION_SECONDS
-    ):
-        return str(_latest_mc_version_cache["value"])
+    if _latest_mc_version_value and (current_time - _latest_mc_version_timestamp) < CACHE_DURATION_SECONDS:
+        return _latest_mc_version_value
 
     versions = await get_minecraft_versions(version_type="release")
     if versions:
         latest = versions[0]
-        _latest_mc_version_cache["value"] = latest
-        _latest_mc_version_cache["timestamp"] = current_time
+        _latest_mc_version_value = latest
+        _latest_mc_version_timestamp = current_time
         return latest
 
     raise RuntimeError("Could not retrieve latest Minecraft release version")

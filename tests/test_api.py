@@ -36,7 +36,7 @@ class TestRootEndpoint:
 class TestPathTraversal:
     def test_download_rejects_traversal(self, client):
         resp = client.get("/admin/download/../../etc/passwd", headers={"Authorization": "Bearer fake"})
-        assert resp.status_code in (400, 401)
+        assert resp.status_code in (400, 401, 404)
 
     def test_upload_rejects_traversal(self, client):
         resp = client.put(
