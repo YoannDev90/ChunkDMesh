@@ -104,9 +104,7 @@ class HoverService:
         self.cache.set_hover_data(chunk_x, chunk_z, result)
         return result
 
-    def get_block_at_pixel(
-        self, chunk_x: int, chunk_z: int, local_x: int, local_z: int
-    ) -> dict:
+    def get_block_at_pixel(self, chunk_x: int, chunk_z: int, local_x: int, local_z: int) -> dict:
         if not (0 <= local_x < 16 and 0 <= local_z < 16):
             return {"error": "Invalid local coords"}
 

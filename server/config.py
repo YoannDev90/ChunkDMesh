@@ -10,6 +10,7 @@ import json5
 
 class ChunkyShape(enum.Enum):
     """https://github.com/pop4959/Chunky/wiki/Shapes"""
+
     SQUARE = "square"
     CIRCLE = "circle"
     TRIANGLE = "triangle"
@@ -21,6 +22,7 @@ class ChunkyShape(enum.Enum):
 
 class ChunkyPattern(enum.Enum):
     """https://github.com/pop4959/Chunky/wiki/Patterns"""
+
     REGIONS = "regions"
     CONCENTRIC = "concentric"
     LOOP = "loop"
@@ -159,8 +161,7 @@ class Config:
         minecraft_versions = await get_minecraft_versions()
         if self.minecraft_version not in minecraft_versions:
             raise ValueError(
-                f"Invalid Minecraft version: {self.minecraft_version}. "
-                f"Available: {minecraft_versions[:3]}..."
+                f"Invalid Minecraft version: {self.minecraft_version}. Available: {minecraft_versions[:3]}..."
             )
 
         loader_versions = await get_loader_version(

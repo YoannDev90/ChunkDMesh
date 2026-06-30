@@ -48,7 +48,8 @@ class BenchmarkRunner:
             java_bin,
             "-Xmx2G",
             "-Xms512M",
-            "-jar", server_jar,
+            "-jar",
+            server_jar,
             "nogui",
         ]
 
@@ -84,6 +85,7 @@ class BenchmarkRunner:
 
         try:
             from rcon_client import RCONConnection
+
             rcon = RCONConnection("127.0.0.1", port=rcon_port, password=rcon_password)
             if not rcon.connect(retries=10, delay=2.0):
                 print("  RCON connection failed")

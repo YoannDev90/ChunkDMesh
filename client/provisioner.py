@@ -34,6 +34,7 @@ class Provisioner:
 
     def setup_java(self, mc_version: str):
         from java_utils import ensure_java
+
         java_home = ensure_java(mc_version)
         java_bin = java_home / "bin" / "java"
         self.log("☕", f"Java ready: {java_home}")
@@ -54,6 +55,7 @@ class Provisioner:
         else:
             self.log("📥", "Downloading Chunky + deps from Modrinth...")
             from modrinth import CHUNKY_MODRINTH_PROJECT_ID, FABRIC_API_PROJECT_ID, get_modrinth_download
+
             chunky_ver = config.get("chunky_version", "")
             chunky_info = get_modrinth_download(CHUNKY_MODRINTH_PROJECT_ID, chunky_ver, loader, mc_version)
             if not chunky_info:

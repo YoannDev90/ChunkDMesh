@@ -37,10 +37,12 @@ async def get_batch(request: Request, token_data: dict = Depends(verify_token)):
         batch_id, region_coords = await attribute_tasks_to_client(client_id)
     except ValueError as err:
         raise HTTPException(status_code=404, detail="No tasks available") from err
-    return JSONResponse({
-        "batch_id": batch_id,
-        "regions": [{"region_x": rx, "region_z": rz} for rx, rz in region_coords],
-    })
+    return JSONResponse(
+        {
+            "batch_id": batch_id,
+            "regions": [{"region_x": rx, "region_z": rz} for rx, rz in region_coords],
+        }
+    )
 
 
 @router.post("/submit")
@@ -58,10 +60,12 @@ async def submit_tasks(
         cached_hash = None
         async with get_db_session() as session:
             v_result = await session.execute(
-                select(Validation).where(
+                select(Validation)
+                .where(
                     Validation.batch_id == batch_id,
                     Validation.storage_path == filename,
-                ).limit(1)
+                )
+                .limit(1)
             )
             v = v_result.scalar_one_or_none()
             if v:
@@ -92,9 +96,7 @@ async def submit_tasks(
     logger.info("hash validation: batch=%s valid=%s/%s", batch_id, valid_count, total_count)
 
     async with get_db_session() as session:
-        batch_result = await session.execute(
-            select(Batch).where(Batch.id == batch_id).limit(1)
-        )
+        batch_result = await session.execute(select(Batch).where(Batch.id == batch_id).limit(1))
         batch = batch_result.scalar_one_or_none()
         if not batch:
             raise HTTPException(status_code=404, detail="Batch not found")
@@ -104,12 +106,14 @@ async def submit_tasks(
         config = Config()
         if config.verification and all_valid:
             other_result = await session.execute(
-                select(Batch).where(
+                select(Batch)
+                .where(
                     Batch.id != batch_id,
                     Batch.region_x == batch.region_x,
                     Batch.region_z == batch.region_z,
                     Batch.status == "completed",
-                ).limit(1)
+                )
+                .limit(1)
             )
             other_batch = other_result.scalar_one_or_none()
 
@@ -149,9 +153,7 @@ async def submit_tasks(
 
 
 @router.put("/upload/{batch_id}")
-async def upload_chunks(
-    batch_id: int, request: Request, token_data: dict = Depends(verify_token)
-):
+async def upload_chunks(batch_id: int, request: Request, token_data: dict = Depends(verify_token)):
     client_id = token_data.get("client_id")
     if not client_id:
         raise HTTPException(status_code=400, detail="Invalid token payload")
@@ -178,16 +180,16 @@ async def upload_chunks(
                 )
             )
             if not existing.scalar_one_or_none():
-                session.add(Validation(
-                    batch_id=batch_id,
-                    client_id=client_id,
-                    file_hash=sha256_hash,
-                    storage_path=filename,
-                ))
+                session.add(
+                    Validation(
+                        batch_id=batch_id,
+                        client_id=client_id,
+                        file_hash=sha256_hash,
+                        storage_path=filename,
+                    )
+                )
 
-            batch_result = await session.execute(
-                select(Batch).where(Batch.id == batch_id).limit(1)
-            )
+            batch_result = await session.execute(select(Batch).where(Batch.id == batch_id).limit(1))
             batch = batch_result.scalar_one_or_none()
             if batch and batch.status == "assigned":
                 batch.status = "working"
@@ -195,12 +197,20 @@ async def upload_chunks(
 
         logger.info(
             "upload: batch=%s file=%s hash=%s raw=%s compressed=%s",
-            batch_id, filename, sha256_hash, raw_size, len(chunk_data),
+            batch_id,
+            filename,
+            sha256_hash,
+            raw_size,
+            len(chunk_data),
         )
-        return JSONResponse({
-            "status": "received", "batch_id": batch_id,
-            "filename": filename, "hash": sha256_hash,
-        })
+        return JSONResponse(
+            {
+                "status": "received",
+                "batch_id": batch_id,
+                "filename": filename,
+                "hash": sha256_hash,
+            }
+        )
     except HTTPException:
         raise
     except Exception as e:

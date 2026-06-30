@@ -180,8 +180,22 @@ class StepMonitor:
                 snap.write_bytes = final["write_bytes"] - baseline["write_bytes"]
                 snap.thread_count = final["threads"]
             snap.wall_s = t1 - snap.wall_s
-            self._steps.append(StepSnapshot(**{k: getattr(snap, k) for k in
-                ["name", "wall_s", "cpu_s", "rss_kb_delta", "read_bytes", "write_bytes", "thread_count"]}))
+            self._steps.append(
+                StepSnapshot(
+                    **{
+                        k: getattr(snap, k)
+                        for k in [
+                            "name",
+                            "wall_s",
+                            "cpu_s",
+                            "rss_kb_delta",
+                            "read_bytes",
+                            "write_bytes",
+                            "thread_count",
+                        ]
+                    }
+                )
+            )
             self._current = None
             self._baseline = None
 
@@ -204,6 +218,7 @@ monitor = StepMonitor()
 
 # --- OTEL-compatible export ---
 
+
 @dataclass
 class MetricPoint:
     name: str
@@ -215,9 +230,10 @@ class MetricPoint:
 def export_otel_console(steps: list[StepSnapshot], system: SystemSample | None = None):
     """Print metrics in OTEL-compatible key=value format (for piping to OTEL collector)."""
     for s in steps:
-        print(f"#otel step={s.name} wall_ms={s.wall_s*1000:.0f} cpu_ms={s.cpu_s*1000:.0f} rss_delta_kb={s.rss_kb_delta} read_bytes={s.read_bytes} write_bytes={s.write_bytes} threads={s.thread_count}")
+        print(
+            f"#otel step={s.name} wall_ms={s.wall_s * 1000:.0f} cpu_ms={s.cpu_s * 1000:.0f} rss_delta_kb={s.rss_kb_delta} read_bytes={s.read_bytes} write_bytes={s.write_bytes} threads={s.thread_count}"
+        )
     if system:
-        print(f"#otel system cpu_load_1={system.cpu_load_1:.2f} cpu_load_5={system.cpu_load_5:.2f} cpu_load_15={system.cpu_load_15:.2f} mem_total_gb={system.mem_total_gb:.2f} mem_avail_gb={system.mem_avail_gb:.2f} mem_used_pct={system.mem_used_pct:.1f}")
-
-
-
+        print(
+            f"#otel system cpu_load_1={system.cpu_load_1:.2f} cpu_load_5={system.cpu_load_5:.2f} cpu_load_15={system.cpu_load_15:.2f} mem_total_gb={system.mem_total_gb:.2f} mem_avail_gb={system.mem_avail_gb:.2f} mem_used_pct={system.mem_used_pct:.1f}"
+        )

@@ -31,6 +31,7 @@ async def _sweep_dead_clients():
             async with get_db_session() as session:
                 from datetime import datetime as _dt
                 from datetime import timezone as _tz
+
                 cutoff = _time.time() - HEARTBEAT_TIMEOUT_SECONDS
                 cutoff_dt = _dt.fromtimestamp(cutoff, tz=_tz.utc)
 
@@ -55,7 +56,8 @@ async def _sweep_dead_clients():
                         batch.assigned_to = None
                         logger.warning(
                             "Reassigning batch %s from dead client %s",
-                            batch.id, dead_client.id,
+                            batch.id,
+                            dead_client.id,
                         )
 
                 if dead_clients:
@@ -72,7 +74,8 @@ async def lifespan(app_instance):
 
 
 app = FastAPI(
-    title="ChunkDMesh Orchestrator", version="0.1.0",
+    title="ChunkDMesh Orchestrator",
+    version="0.1.0",
     lifespan=lifespan,
 )
 
@@ -84,8 +87,7 @@ async def access_log_middleware(request: Request, call_next):
     t0 = _time.monotonic()
     resp = await call_next(request)
     elapsed_ms = (_time.monotonic() - t0) * 1000
-    logger.info("%s %s -> %s (%sms)", request.method, request.url.path,
-                resp.status_code, f"{elapsed_ms:.0f}")
+    logger.info("%s %s -> %s (%sms)", request.method, request.url.path, resp.status_code, f"{elapsed_ms:.0f}")
     return resp
 
 
@@ -118,8 +120,12 @@ async def run_api():
     port = int(os.environ.get("CHUNKMESH_PORT", "8000"))
 
     config = uvicorn.Config(
-        app, host=host, port=port, log_level="info",
-        log_config=None, access_log=False,
+        app,
+        host=host,
+        port=port,
+        log_level="info",
+        log_config=None,
+        access_log=False,
     )
     server = uvicorn.Server(config)
 

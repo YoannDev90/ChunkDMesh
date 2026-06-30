@@ -35,9 +35,12 @@ def _generate_palette(map_cfg):
         return
     try:
         import subprocess
+
         result = subprocess.run(
             [sys.executable, str(script), "--output", map_cfg.palette_path],
-            capture_output=True, text=True, timeout=180,
+            capture_output=True,
+            text=True,
+            timeout=180,
         )
         if result.returncode == 0:
             with open(map_cfg.palette_path) as f:
@@ -59,6 +62,7 @@ def _init_map_generator():
             return _map_generator
 
         from map_generator import HoverService, MapConfig, RustTiler, TileCache
+
         try:
             _config = Config()
             _ = _config.world_name
@@ -73,8 +77,10 @@ def _init_map_generator():
             _generate_palette(map_cfg)
 
         tiler = RustTiler(
-            map_cfg.rust_binary, map_cfg.palette_path,
-            map_cfg.biome_colors_path, map_cfg.biome_tints_path,
+            map_cfg.rust_binary,
+            map_cfg.palette_path,
+            map_cfg.biome_colors_path,
+            map_cfg.biome_tints_path,
         )
         cache_dir = _DATA / ".map_cache"
         cache_dir.mkdir(parents=True, exist_ok=True)
@@ -82,7 +88,10 @@ def _init_map_generator():
         hover = HoverService(map_cfg.region_dir, tiler, cache)
 
         _map_generator = {
-            "config": map_cfg, "tiler": tiler, "cache": cache, "hover": hover,
+            "config": map_cfg,
+            "tiler": tiler,
+            "cache": cache,
+            "hover": hover,
         }
         return _map_generator
 
@@ -96,9 +105,7 @@ async def map_viewer(request: Request):
 async def map_regions():
     try:
         async with get_db_session() as session:
-            result = await session.execute(
-                select(Batch.region_x, Batch.region_z, Batch.status)
-            )
+            result = await session.execute(select(Batch.region_x, Batch.region_z, Batch.status))
             rows = result.all()
         regions = [{"region_x": r.region_x, "region_z": r.region_z, "status": r.status} for r in rows]
     except Exception:

@@ -96,15 +96,19 @@ def get_available_resources_averaged(print_output=False, return_format=ResourceR
         print(f"Available RAM power: {ram_power:.2f} Go")
         print(f"Total power score: {power_available:.2f}")
 
-    infos = {
-        'load_avg_5min': load_avg[1],
-        'cpu_freq_ghz': freq_current,
-        'cpu_available_pct': cpu_available_pct,
-        'cpu_power': cpu_power,
-        'ram_available_gb': ram_available,
-        'ram_available_pct': ram_available_pct,
-        'ram_power': ram_power,
-        'power_score': power_available
-    } if return_format == ResourceReportFormat.DETAILED else power_available
+    infos = (
+        {
+            "load_avg_5min": load_avg[1],
+            "cpu_freq_ghz": freq_current,
+            "cpu_available_pct": cpu_available_pct,
+            "cpu_power": cpu_power,
+            "ram_available_gb": ram_available,
+            "ram_available_pct": ram_available_pct,
+            "ram_power": ram_power,
+            "power_score": power_available,
+        }
+        if return_format == ResourceReportFormat.DETAILED
+        else power_available
+    )
 
     return infos

@@ -15,8 +15,9 @@ class RustTiler:
     Subsequent chunks from the same region read from cache instantly.
     """
 
-    def __init__(self, binary_path: str, palette_path: str = "",
-                 biome_colors_path: str = "", biome_tints_path: str = ""):
+    def __init__(
+        self, binary_path: str, palette_path: str = "", biome_colors_path: str = "", biome_tints_path: str = ""
+    ):
         self.binary = binary_path
         self.palette_path = palette_path
         self.biome_colors_path = biome_colors_path
@@ -39,12 +40,14 @@ class RustTiler:
         cmd.extend([region_path, "--all", "--output-dir", str(output_dir)])
         try:
             result = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=120,
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=120,
             )
             if result.returncode != 0:
                 stderr = result.stderr[:500] if result.stderr else ""
-                logger.error("Region render failed exit=%d stderr=%s",
-                             result.returncode, stderr)
+                logger.error("Region render failed exit=%d stderr=%s", result.returncode, stderr)
                 return False
             return True
         except subprocess.TimeoutExpired:
@@ -54,9 +57,7 @@ class RustTiler:
             logger.error("Region render error: %s", e)
             return False
 
-    def render_chunk(
-        self, region_path: str, chunk_x: int, chunk_z: int
-    ) -> tuple[bytes | None, dict | None]:
+    def render_chunk(self, region_path: str, chunk_x: int, chunk_z: int) -> tuple[bytes | None, dict | None]:
         if not Path(self.binary).exists():
             logger.error("Rust binary not found: %s", self.binary)
             return None, None

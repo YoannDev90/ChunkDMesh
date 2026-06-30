@@ -24,9 +24,7 @@ async def heartbeat(request: Request, token_data: dict = Depends(verify_token)):
         raise HTTPException(status_code=400, detail="Invalid token payload")
 
     async with get_db_session() as session:
-        result = await session.execute(
-            select(Client).where(Client.id == client_id).limit(1)
-        )
+        result = await session.execute(select(Client).where(Client.id == client_id).limit(1))
         client = result.scalar_one_or_none()
         if client:
             client.last_seen = datetime.datetime.now(datetime.timezone.utc)
@@ -50,9 +48,7 @@ async def submit_benchmark(req: BenchmarkRequest, request: Request, token_data: 
     score = req.chunks_per_second
 
     async with get_db_session() as session:
-        result = await session.execute(
-            select(Client).where(Client.id == client_id).limit(1)
-        )
+        result = await session.execute(select(Client).where(Client.id == client_id).limit(1))
         client = result.scalar_one_or_none()
         if client:
             client.benchmark_score = score
@@ -60,7 +56,9 @@ async def submit_benchmark(req: BenchmarkRequest, request: Request, token_data: 
 
     logger.info("benchmark submitted: client=%s chunks/s=%.2f", client_id, score)
 
-    return JSONResponse({
-        "status": "accepted",
-        "chunks_per_second": score,
-    })
+    return JSONResponse(
+        {
+            "status": "accepted",
+            "chunks_per_second": score,
+        }
+    )

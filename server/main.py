@@ -10,6 +10,7 @@ async def main() -> None:
     setup_logging()
     await init_db()
     from config import Config
+
     config = Config()
     await config.validate()
     await fill_tasks_table(config)

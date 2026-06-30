@@ -14,6 +14,7 @@ from mc_versions import get_latest_minecraft_release_version
 @dataclass(frozen=True)
 class LoaderConfig:
     """Complete install + download configuration for a mod loader."""
+
     name: str
     install_url_template: str
     installer_jar_template: str | None
@@ -98,7 +99,8 @@ async def get_quilt_versions() -> list[str]:
         if versions_element is None:
             return []
         stable = [
-            v.text for v in versions_element.findall("version")
+            v.text
+            for v in versions_element.findall("version")
             if v.text and "-beta" not in v.text and "-pre" not in v.text
         ]
         stable.sort(key=lambda s: [int(u) if u.isdigit() else u for u in re.split("([0-9]+)", s)], reverse=True)
@@ -107,15 +109,11 @@ async def get_quilt_versions() -> list[str]:
         raise RuntimeError(f"Error fetching/parsing Quilt versions: {e}") from e
 
 
-async def get_forge_versions(
-    minecraft_version: str | None = None, version_only: bool = False
-) -> list[str]:
+async def get_forge_versions(minecraft_version: str | None = None, version_only: bool = False) -> list[str]:
     target = minecraft_version or await get_latest_minecraft_release_version()
     try:
         client = await get_http_client()
-        response = await client.get(
-            "https://maven.minecraftforge.net/net/minecraftforge/forge/maven-metadata.xml"
-        )
+        response = await client.get("https://maven.minecraftforge.net/net/minecraftforge/forge/maven-metadata.xml")
         response.raise_for_status()
         root = ET.fromstring(response.text)
         versions_element = root.find(".//versions")
@@ -132,16 +130,12 @@ async def get_forge_versions(
         raise RuntimeError(f"Error fetching/parsing Forge versions: {e}") from e
 
 
-async def get_neoforge_versions(
-    minecraft_version: str | None = None, version_type: str | None = None
-) -> list[str]:
+async def get_neoforge_versions(minecraft_version: str | None = None, version_type: str | None = None) -> list[str]:
     if version_type and version_type not in ["release"]:
         raise ValueError("Invalid NeoForge version type. Must be 'release' or None.")
     try:
         client = await get_http_client()
-        response = await client.get(
-            "https://maven.neoforged.net/releases/net/neoforged/neoforge/maven-metadata.xml"
-        )
+        response = await client.get("https://maven.neoforged.net/releases/net/neoforged/neoforge/maven-metadata.xml")
         response.raise_for_status()
         root = ET.fromstring(response.text)
         versions_element = root.find(".//versions")

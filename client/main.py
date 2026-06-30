@@ -45,6 +45,7 @@ def main(bg: bool = False):
 
     if not bg:
         import threading as _t
+
         tui_thread = _t.Thread(target=tui.run, daemon=True)
         tui_thread.start()
 
@@ -62,9 +63,7 @@ def main(bg: bool = False):
     # ── Power score ─────────────────────────────────────────
     log("📊", "Power score...")
     with monitor.measure("power_score"):
-        power_score = get_available_resources_averaged(
-            print_output=False, return_format=ResourceReportFormat.VALUE
-        )
+        power_score = get_available_resources_averaged(print_output=False, return_format=ResourceReportFormat.VALUE)
     set_power_score(power_score)
     log("📊", f"Score: {power_score:.2f}")
 
@@ -110,6 +109,7 @@ def main(bg: bool = False):
         java_bin = provisioner.setup_java(mc_version)
 
     from asset_manager import AssetManager
+
     work_dir = Path.home() / ".chunkdmesh" / "work"
     asset_mgr = AssetManager(SERVER_URL, token, work_dir=work_dir)
 
@@ -182,8 +182,7 @@ def main(bg: bool = False):
     def _heartbeat_loop():
         while not heartbeat_stop.is_set():
             with contextlib.suppress(Exception):
-                send_request(f"{SERVER_URL}/heartbeat", method="POST",
-                             headers=provisioner.auth_headers)
+                send_request(f"{SERVER_URL}/heartbeat", method="POST", headers=provisioner.auth_headers)
             heartbeat_stop.wait(HEARTBEAT_INTERVAL)
 
     heartbeat_thread = threading.Thread(target=_heartbeat_loop, daemon=True)
@@ -192,6 +191,7 @@ def main(bg: bool = False):
     # ── Work loop ───────────────────────────────────────────
     set_status("ready")
     from uploader import RegionUploader
+
     uploader = RegionUploader(SERVER_URL, token)
 
     batch_count = run_work_loop(
@@ -230,6 +230,7 @@ def main(bg: bool = False):
 
 def _wait_for_server(url: str, max_wait: float = 120.0) -> bool:
     import httpx
+
     delay = 0.5
     start = time.time()
     while time.time() - start < max_wait:

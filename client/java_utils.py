@@ -86,24 +86,30 @@ def _search_common_locations() -> list[Path]:
     system = platform.system()
 
     if system == "Linux":
-        locations.extend([
-            Path("/usr/lib/jvm"),
-            Path("/usr/local/lib/jvm"),
-            Path.home() / ".sdkman" / "candidates" / "java",
-        ])
+        locations.extend(
+            [
+                Path("/usr/lib/jvm"),
+                Path("/usr/local/lib/jvm"),
+                Path.home() / ".sdkman" / "candidates" / "java",
+            ]
+        )
     elif system == "Darwin":
-        locations.extend([
-            Path("/Library/Java/JavaVirtualMachines"),
-            Path.home() / ".sdkman" / "candidates" / "java",
-        ])
+        locations.extend(
+            [
+                Path("/Library/Java/JavaVirtualMachines"),
+                Path.home() / ".sdkman" / "candidates" / "java",
+            ]
+        )
     elif system == "Windows":
         program_files = os.environ.get("ProgramFiles", "C:\\Program Files")  # noqa: SIM112
         program_files_x86 = os.environ.get("ProgramFiles(x86)", "C:\\Program Files (x86)")  # noqa: SIM112
-        locations.extend([
-            Path(program_files) / "Java",
-            Path(program_files_x86) / "Java",
-            Path.home() / ".sdkman" / "candidates" / "java",
-        ])
+        locations.extend(
+            [
+                Path(program_files) / "Java",
+                Path(program_files_x86) / "Java",
+                Path.home() / ".sdkman" / "candidates" / "java",
+            ]
+        )
 
     found = []
     for base in locations:
@@ -184,10 +190,7 @@ def _fetch_download_url(mc_version: str) -> str:
     arch = _get_arch()
     java_version = required_java_version(mc_version)
 
-    url = (
-        f"{ADOPTIUM_API}/assets/latest/{java_version}/hotspot"
-        f"?architecture={arch}&os={os_name}&image_type=jdk"
-    )
+    url = f"{ADOPTIUM_API}/assets/latest/{java_version}/hotspot?architecture={arch}&os={os_name}&image_type=jdk"
     resp = httpx.get(url, follow_redirects=True, timeout=30)
     resp.raise_for_status()
     data = resp.json()
@@ -223,6 +226,7 @@ def download_java(mc_version: str, dest: Path) -> Path:
     elif archive_path.suffix == ".gz" or filename.endswith(".tar.gz"):
         import tarfile
         import tempfile
+
         with tempfile.TemporaryDirectory(dir=dest) as tmp:
             with tarfile.open(archive_path, "r:gz") as tf:
                 tf.extractall(tmp)

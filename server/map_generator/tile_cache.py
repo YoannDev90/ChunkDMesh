@@ -25,9 +25,7 @@ class TileCache:
     def _tile_path(self, chunk_x: int, chunk_z: int, zoom: int = 5) -> Path:
         return self.disk_path / f"{self._tile_key(chunk_x, chunk_z, zoom)}.png"
 
-    def get_tile_png(
-        self, chunk_x: int, chunk_z: int, zoom: int = 5
-    ) -> bytes | None:
+    def get_tile_png(self, chunk_x: int, chunk_z: int, zoom: int = 5) -> bytes | None:
         key = f"tile:{zoom}:{chunk_x}:{chunk_z}"
         if key in self._mem_cache:
             cached = self._mem_cache[key]
@@ -43,9 +41,7 @@ class TileCache:
             return data
         return None
 
-    def set_tile_png(
-        self, chunk_x: int, chunk_z: int, png_data: bytes, zoom: int = 5
-    ):
+    def set_tile_png(self, chunk_x: int, chunk_z: int, png_data: bytes, zoom: int = 5):
         key = f"tile:{zoom}:{chunk_x}:{chunk_z}"
         path = self._tile_path(chunk_x, chunk_z, zoom)
         path.write_bytes(png_data)

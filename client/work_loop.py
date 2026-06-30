@@ -31,23 +31,35 @@ def region_dir_for_dim(server_dir: Path, dimension: str) -> Path:
 
 def _count_mca_chunks(path: Path) -> int:
     try:
-        with open(path, 'rb') as fh:
+        with open(path, "rb") as fh:
             header = fh.read(4096)
         count = 0
         for i in range(1024):
-            offset_bytes = header[i * 4:i * 4 + 3]
-            if offset_bytes != b'\x00\x00\x00':
+            offset_bytes = header[i * 4 : i * 4 + 3]
+            if offset_bytes != b"\x00\x00\x00":
                 count += 1
         return count
     except Exception:
         return 0
 
 
-def run_work_loop(server_url: str, auth_headers: dict, dimension: str,
-                  server_dir: Path, rcon, chunky, uploader,
-                  shape: str, monitor, log_fn, set_status_fn,
-                  set_region_fn, set_progress_fn, set_batch_count_fn,
-                  expected_chunks: int = 1024) -> int:
+def run_work_loop(
+    server_url: str,
+    auth_headers: dict,
+    dimension: str,
+    server_dir: Path,
+    rcon,
+    chunky,
+    uploader,
+    shape: str,
+    monitor,
+    log_fn,
+    set_status_fn,
+    set_region_fn,
+    set_progress_fn,
+    set_batch_count_fn,
+    expected_chunks: int = 1024,
+) -> int:
     """Main work loop. Returns batch count when done."""
 
     batch_count = 0
@@ -85,19 +97,44 @@ def run_work_loop(server_url: str, auth_headers: dict, dimension: str,
         set_status_fn("generating", f"Region {region_label}")
 
         with monitor.measure("chunky_generation"):
-            _run_chunky(chunky, rcon, x1, z1, x2, z2, shape, dimension, region_dir,
-                        region_label, log_fn, set_progress_fn, expected_chunks)
+            _run_chunky(
+                chunky,
+                rcon,
+                x1,
+                z1,
+                x2,
+                z2,
+                shape,
+                dimension,
+                region_dir,
+                region_label,
+                log_fn,
+                set_progress_fn,
+                expected_chunks,
+            )
 
-        _upload_and_submit(server_url, auth_headers, batch_id, region_dir,
-                           rx, rz, rcon, uploader, region_label, expected_chunks, log_fn)
+        _upload_and_submit(
+            server_url,
+            auth_headers,
+            batch_id,
+            region_dir,
+            rx,
+            rz,
+            rcon,
+            uploader,
+            region_label,
+            expected_chunks,
+            log_fn,
+        )
 
         set_status_fn("idle", "Waiting for next task")
 
     return batch_count
 
 
-def _run_chunky(chunky, rcon, x1, z1, x2, z2, shape, dimension, region_dir,
-                region_label, log_fn, set_progress_fn, expected_chunks):
+def _run_chunky(
+    chunky, rcon, x1, z1, x2, z2, shape, dimension, region_dir, region_label, log_fn, set_progress_fn, expected_chunks
+):
     import time as _time
 
     from chunky_parser import parse_chunky_progress
@@ -157,14 +194,23 @@ def _run_chunky(chunky, rcon, x1, z1, x2, z2, shape, dimension, region_dir,
             seen_progress = True
 
         if elapsed > 3 and (info["finished"] or "100%" in progress.lower()):
-            log_fn("⛏️ ", f"Region {region_label} done in {elapsed:.1f}s ({last_chunks_done}/{expected_chunks_local} chunks)")
+            log_fn(
+                "⛏️ ",
+                f"Region {region_label} done in {elapsed:.1f}s ({last_chunks_done}/{expected_chunks_local} chunks)",
+            )
             break
         if seen_progress and last_chunks_done >= expected_chunks_local and expected_chunks_local > 0:
-            log_fn("⛏️ ", f"Region {region_label} done ({last_chunks_done}/{expected_chunks_local} chunks) in {elapsed:.1f}s")
+            log_fn(
+                "⛏️ ",
+                f"Region {region_label} done ({last_chunks_done}/{expected_chunks_local} chunks) in {elapsed:.1f}s",
+            )
             break
         if info["not_running"]:
             if seen_progress:
-                log_fn("⛏️ ", f"Region {region_label} done in {elapsed:.1f}s ({last_chunks_done}/{expected_chunks_local} chunks)")
+                log_fn(
+                    "⛏️ ",
+                    f"Region {region_label} done in {elapsed:.1f}s ({last_chunks_done}/{expected_chunks_local} chunks)",
+                )
                 break
             elif elapsed > 30:
                 log_fn("⚠️ ", f"Region {region_label} — no progress after {elapsed:.0f}s, assuming done")
@@ -172,8 +218,9 @@ def _run_chunky(chunky, rcon, x1, z1, x2, z2, shape, dimension, region_dir,
         _time.sleep(2.0)
 
 
-def _upload_and_submit(server_url, auth_headers, batch_id, region_dir,
-                       rx, rz, rcon, uploader, region_label, expected_chunks, log_fn):
+def _upload_and_submit(
+    server_url, auth_headers, batch_id, region_dir, rx, rz, rcon, uploader, region_label, expected_chunks, log_fn
+):
     import time as _time
 
     log_fn("💾", "Saving world...")

@@ -9,9 +9,7 @@ CHUNKY_MODRINTH_PROJECT_ID = "fALzjamp"
 FABRIC_API_PROJECT_ID = "P7dR8mSH"
 
 
-async def get_chunky_version(
-    version: str, loader: str, minecraft_version: str | None = None
-) -> str | None:
+async def get_chunky_version(version: str, loader: str, minecraft_version: str | None = None) -> str | None:
     """Retrieves a specific Chunky version ID from Modrinth."""
     url = f"https://api.modrinth.com/v2/project/{CHUNKY_MODRINTH_PROJECT_ID}/version"
     if loader:
@@ -40,9 +38,7 @@ async def get_chunky_version(
         raise RuntimeError(f"Error connecting to Modrinth API: {e}") from e
 
 
-async def get_modrinth_download(
-    project_id: str, version: str, loader: str, minecraft_version: str
-) -> dict | None:
+async def get_modrinth_download(project_id: str, version: str, loader: str, minecraft_version: str) -> dict | None:
     """Get download info for a Modrinth project version.
 
     Returns {"url": ..., "filename": ..., "size": ...} or None.

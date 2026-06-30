@@ -3,8 +3,8 @@
 
 import argparse
 import asyncio
-import sys
 import os
+import sys
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 SERVER_DIR = os.path.join(ROOT, "server")
@@ -21,6 +21,7 @@ def run_server(host="0.0.0.0", port=8000, world_config=None, raw_cli=False):
     os.chdir(SERVER_DIR)
     sys.path.insert(0, SERVER_DIR)
     from main import main
+
     asyncio.run(main(raw_cli=raw_cli))
 
 
@@ -33,6 +34,7 @@ def run_client(host=None, port=None, bg=False):
     os.chdir(CLIENT_DIR)
     sys.path.insert(0, CLIENT_DIR)
     from main import main as client_main
+
     client_main(bg=bg)
 
 
@@ -44,11 +46,14 @@ def main():
         help="What to launch: 'server', 'client', or 'both' (parallel)",
     )
     parser.add_argument(
-        "--host", default="0.0.0.0",
+        "--host",
+        default="0.0.0.0",
         help="Server bind address (default: 0.0.0.0)",
     )
     parser.add_argument(
-        "--port", type=int, default=8000,
+        "--port",
+        type=int,
+        default=8000,
         help="Server port (default: 8000)",
     )
     parser.add_argument(
@@ -56,11 +61,14 @@ def main():
         help="Path to world config JSON5 file",
     )
     parser.add_argument(
-        "--bg", "--background", action="store_true",
+        "--bg",
+        "--background",
+        action="store_true",
         help="Run client in background mode (no TUI)",
     )
     parser.add_argument(
-        "--raw-cli", action="store_true",
+        "--raw-cli",
+        action="store_true",
         help="Run server in raw CLI mode (no TUI, plain output)",
     )
     args = parser.parse_args()
@@ -70,8 +78,8 @@ def main():
     elif args.component == "client":
         run_client(args.host, args.port, bg=args.bg)
     elif args.component == "both":
-        import subprocess
         import signal
+        import subprocess
 
         cmd = [sys.executable, os.path.join(ROOT, "run.py")]
         svr_cmd = [*cmd, "server"]

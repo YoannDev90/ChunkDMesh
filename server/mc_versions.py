@@ -37,15 +37,9 @@ async def get_minecraft_versions(version_type: str | None = None) -> list[str]:
 
     try:
         client = await get_http_client()
-        response = await client.get(
-            "https://piston-meta.mojang.com/mc/game/version_manifest.json"
-        )
+        response = await client.get("https://piston-meta.mojang.com/mc/game/version_manifest.json")
         response.raise_for_status()
         data = response.json()
-        return [
-            v["id"]
-            for v in data.get("versions", [])
-            if not version_type or v.get("type") == version_type
-        ]
+        return [v["id"] for v in data.get("versions", []) if not version_type or v.get("type") == version_type]
     except httpx.HTTPError as e:
         raise RuntimeError(f"Error connecting to Mojang API: {e}") from e

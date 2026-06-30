@@ -15,9 +15,7 @@ async def get_http_client() -> httpx.AsyncClient:
     return _http_client
 
 
-async def get_loader_version(
-    loader: str, minecraft_version: str | None = None
-) -> list[str]:
+async def get_loader_version(loader: str, minecraft_version: str | None = None) -> list[str]:
     """Dispatcher: fetch compatible versions for the given loader."""
     from mc_loaders import (
         get_fabric_versions,

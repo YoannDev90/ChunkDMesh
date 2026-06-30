@@ -60,6 +60,7 @@ class TorrentSeeder:
     def __init__(self, save_path: Path | None = None):
         try:
             import libtorrent as lt
+
             self._lt = lt
         except ImportError as e:
             raise RuntimeError("libtorrent is required for P2P") from e
@@ -129,6 +130,7 @@ class TorrentSeeder:
 
     def wait_for_completion(self, name: str, timeout: float = 600) -> bool:
         import time
+
         start = time.time()
         while time.time() - start < timeout:
             if self.is_complete(name):

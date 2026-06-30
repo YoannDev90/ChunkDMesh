@@ -40,10 +40,12 @@ class ServerTUI:
     def _render_header(self) -> Panel:
         stats = server_state.snapshot()
         uptime = time.time() - stats.start_time
-        uptime_str = f"{int(uptime//3600)}h{int((uptime%3600)//60)}m{int(uptime%60)}s"
+        uptime_str = f"{int(uptime // 3600)}h{int((uptime % 3600) // 60)}m{int(uptime % 60)}s"
         text = Text.assemble(
-            ("ChunkDMesh Server", "bold cyan"), " | ",
-            (f"Uptime: {uptime_str}", "green"), " | ",
+            ("ChunkDMesh Server", "bold cyan"),
+            " | ",
+            (f"Uptime: {uptime_str}", "green"),
+            " | ",
             (f"Requests: {stats.request_count}", "yellow"),
         )
         return Panel(text, style="black")
@@ -86,6 +88,7 @@ class ServerTUI:
 
     def _render_monitor(self) -> Panel:
         from pathlib import Path
+
         try:
             proc_self = Path("/proc/self/status")
             rss = 0
@@ -102,7 +105,8 @@ class ServerTUI:
             rss = 0
             load_str = "?"
         text = Text.assemble(
-            (f"RSS: {rss} MB", "cyan"), " | ",
+            (f"RSS: {rss} MB", "cyan"),
+            " | ",
             (f"Load: {load_str}", "yellow"),
         )
         return Panel(text, title="Server Process", border_style="cyan")

@@ -18,7 +18,6 @@ Usage:
 
 import argparse
 import json
-import re
 import sys
 import urllib.request
 import zipfile
@@ -35,6 +34,7 @@ VERSION_MANIFEST_URL = "https://launchermeta.mojang.com/mc/game/version_manifest
 
 
 # ── helpers ──────────────────────────────────────────────────────────
+
 
 def get_jar_url(version: str) -> str | None:
     try:
@@ -79,9 +79,8 @@ def dominant_color(img: Image.Image) -> tuple[int, int, int]:
 
 # ── block model parsing ──────────────────────────────────────────────
 
-def walk_model_textures(
-    jar: zipfile.ZipFile, model_rel: str, visited: set | None = None
-) -> list[str]:
+
+def walk_model_textures(jar: zipfile.ZipFile, model_rel: str, visited: set | None = None) -> list[str]:
     """Walk block model parent chain, return ordered texture paths (top-preferred)."""
     if visited is None:
         visited = set()
@@ -129,9 +128,8 @@ def _resolve_model_name(model_val: str) -> str:
         m += ".json"
     return m
 
-def has_tintindex(
-    jar: zipfile.ZipFile, model_rel: str, visited: set | None = None
-) -> bool:
+
+def has_tintindex(jar: zipfile.ZipFile, model_rel: str, visited: set | None = None) -> bool:
     """Check if any face in the block model has tintindex (grass/foliage biome tint)."""
     if visited is None:
         visited = set()
@@ -175,6 +173,7 @@ def has_tintindex(
 
 
 # ── biome data extraction ────────────────────────────────────────────
+
 
 def extract_biome_colors(
     jar: zipfile.ZipFile,
@@ -263,6 +262,7 @@ def extract_biome_colors(
 
 # ── main pipeline ────────────────────────────────────────────────────
 
+
 def build_palette_from_jar(jar_data: bytes) -> tuple[dict, dict, list[str]]:
     """Extract block colors, biome colors, and tint block list from jar.
 
@@ -301,7 +301,10 @@ def build_palette_from_jar(jar_data: bytes) -> tuple[dict, dict, list[str]]:
             except RecursionError:
                 tint_check_cache[model_rel] = False
 
-        print(f"  Parsed {len(model_cache)} models, checked {sum(1 for v in tint_check_cache.values() if v)} tinted", file=sys.stderr)
+        print(
+            f"  Parsed {len(model_cache)} models, checked {sum(1 for v in tint_check_cache.values() if v)} tinted",
+            file=sys.stderr,
+        )
 
         # Phase 3: collect all known block names from blockstate files
         blockstate_prefix = "assets/minecraft/blockstates/"
@@ -483,9 +486,7 @@ def main():
     parser.add_argument("--output-dir", default=None, help="Output directory")
     args = parser.parse_args()
 
-    out_dir = Path(args.output_dir) if args.output_dir else (
-        Path(__file__).resolve().parent.parent / "data"
-    )
+    out_dir = Path(args.output_dir) if args.output_dir else (Path(__file__).resolve().parent.parent / "data")
     out_dir.mkdir(parents=True, exist_ok=True)
 
     if args.assets:

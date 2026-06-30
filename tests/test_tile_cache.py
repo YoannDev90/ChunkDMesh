@@ -1,6 +1,5 @@
 """Tests for tile cache LRU eviction."""
 
-
 from map_generator.tile_cache import TileCache
 
 

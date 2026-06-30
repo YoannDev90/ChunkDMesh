@@ -45,6 +45,7 @@ class RegionAssembler:
             except OSError:
                 try:
                     import shutil
+
                     shutil.copy2(f, dest)
                 except Exception as e:
                     errors.append(f"{f.name}: {e}")

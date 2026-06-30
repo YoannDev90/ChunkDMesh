@@ -1,10 +1,10 @@
 """Tests for the FastAPI endpoints."""
 
-
 import pytest
 
 try:
     from fastapi.testclient import TestClient
+
     _HAS_FASTAPI = True
 except ImportError:
     _HAS_FASTAPI = False
@@ -15,6 +15,7 @@ def client():
     if not _HAS_FASTAPI:
         pytest.skip("fastapi not installed in test env")
     from api import app
+
     return TestClient(app)
 
 

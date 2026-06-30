@@ -35,9 +35,7 @@ async def get_mods(request: Request, token_data: dict = Depends(verify_token)):
         raise HTTPException(status_code=404, detail="Mods not found")
     filename = os.path.basename(zip_path)
     headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
-    return StreamingResponse(
-        _file_stream_generator(zip_path), media_type="application/zip", headers=headers
-    )
+    return StreamingResponse(_file_stream_generator(zip_path), media_type="application/zip", headers=headers)
 
 
 @router.get("/config.json")

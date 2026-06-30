@@ -209,9 +209,7 @@ class ChunkyController:
             if "running" in progress.lower() or "generating" in progress.lower():
                 was_running = True
             elif was_running and (
-                "done" in progress.lower()
-                or "finished" in progress.lower()
-                or "not running" in progress.lower()
+                "done" in progress.lower() or "finished" in progress.lower() or "not running" in progress.lower()
             ):
                 logger.info("Generation completed!")
                 return True

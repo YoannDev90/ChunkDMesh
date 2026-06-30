@@ -37,9 +37,7 @@ class MapConfig:
         return cls(
             region_dir=regions_dir,
             tile_cache_dir=str(data_dir / ".map_cache"),
-            rust_binary=str(
-                base / "bin" / "rust_tiler" / "target" / "release" / "mcmap"
-            ),
+            rust_binary=str(base / "bin" / "rust_tiler" / "target" / "release" / "mcmap"),
             palette_path=str(data_dir / "block_colors.json"),
             biome_colors_path=str(data_dir / "biome_colors.json"),
             biome_tints_path=str(data_dir / "biome_tint_blocks.json"),

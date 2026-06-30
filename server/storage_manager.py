@@ -65,13 +65,11 @@ class ChunkStorage:
         if not path.exists():
             return None
         from constants import compute_file_hash
+
         return compute_file_hash(path)
 
     def list_regions(self) -> list[str]:
-        return sorted(
-            f.name for f in self.regions_dir.iterdir()
-            if f.suffix == ".mca"
-        )
+        return sorted(f.name for f in self.regions_dir.iterdir() if f.suffix == ".mca")
 
     def total_size_mb(self) -> float:
         blob_dir = self.regions_dir / ".blobs"

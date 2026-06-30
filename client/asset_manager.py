@@ -79,8 +79,10 @@ class AssetManager:
         self.work_dir.mkdir(parents=True, exist_ok=True)
 
         print("Downloading mods.zip...")
-        with httpx.Client(follow_redirects=True, timeout=300, headers=self.headers) as client, \
-                client.stream("GET", f"{self.server_url}/assets/mods.zip") as resp:
+        with (
+            httpx.Client(follow_redirects=True, timeout=300, headers=self.headers) as client,
+            client.stream("GET", f"{self.server_url}/assets/mods.zip") as resp,
+        ):
             resp.raise_for_status()
             with open(zip_path, "wb") as f:
                 for chunk in resp.iter_bytes(chunk_size=1024 * 64):
@@ -107,9 +109,7 @@ class AssetManager:
 
         return config
 
-    def download_from_modrinth(
-        self, project_id: str, version: str, mc_version: str, loader: str
-    ) -> Path:
+    def download_from_modrinth(self, project_id: str, version: str, mc_version: str, loader: str) -> Path:
         import httpx
 
         url = f"https://api.modrinth.com/v2/project/{project_id}/version"
@@ -241,7 +241,9 @@ class AssetManager:
 
         return self._install_loader(server_dir, java_bin, mc_version, loader_version, cfg)
 
-    def _install_loader(self, server_dir: Path, java_bin: Path, mc_version: str, loader_version: str, cfg: dict) -> Path:
+    def _install_loader(
+        self, server_dir: Path, java_bin: Path, mc_version: str, loader_version: str, cfg: dict
+    ) -> Path:
         args = {"mc_version": mc_version, "loader_version": loader_version}
 
         patterns = [p.format(**args) for p in cfg["installed_jar_patterns"]]

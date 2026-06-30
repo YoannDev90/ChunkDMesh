@@ -11,8 +11,7 @@ from rcon_client import ChunkyController, RCONConnection
 
 
 class MCLifecycle:
-    def __init__(self, server_dir: Path, java_bin: Path, jar_path: Path,
-                 asset_mgr, seed: int, mc_version: str, log_fn):
+    def __init__(self, server_dir: Path, java_bin: Path, jar_path: Path, asset_mgr, seed: int, mc_version: str, log_fn):
         self.server_dir = server_dir
         self.java_bin = java_bin
         self.jar_path = jar_path
@@ -29,6 +28,7 @@ class MCLifecycle:
 
     def start_server(self, measure_ctx=None) -> bool:
         from instance_runner import MCServer
+
         self.asset_mgr.write_server_properties(seed=self.seed)
         self.log("🚀", f"server.properties written (seed={self.seed}, RCON enabled)")
         self.server = MCServer(
@@ -62,7 +62,7 @@ class MCLifecycle:
                                 line = line.rstrip()
                                 if not line:
                                     continue
-                                msg = re.sub(r'^\[\d{2}:\d{2}:\d{2}\]\s*\[[^\]]+\]\s*:\s*', '', line)
+                                msg = re.sub(r"^\[\d{2}:\d{2}:\d{2}\]\s*\[[^\]]+\]\s*:\s*", "", line)
                                 self.log("📜", msg)
                 except Exception:
                     pass
@@ -83,11 +83,13 @@ class MCLifecycle:
 
         self.asset_mgr.write_server_properties()
         from instance_runner import MCServer
+
         self.server = MCServer(
             server_dir=self.server_dir,
             java_bin=self.java_bin,
             jar_path=self.jar_path,
-            xmx_mb=4096, xms_mb=1024,
+            xmx_mb=4096,
+            xms_mb=1024,
         )
         self.start_log_stream()
         self.server.start()
@@ -117,5 +119,8 @@ class MCLifecycle:
 
 
 class _NullContext:
-    def __enter__(self): return self
-    def __exit__(self, *a): pass
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        pass

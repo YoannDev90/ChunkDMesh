@@ -13,9 +13,7 @@ class RegionWatcher:
     Checks mtime of each .mca file every `interval` seconds.
     """
 
-    def __init__(
-        self, region_dir: str, on_change: Callable[[int, int], None], interval: float = 5.0
-    ):
+    def __init__(self, region_dir: str, on_change: Callable[[int, int], None], interval: float = 5.0):
         self.region_dir = Path(region_dir)
         self.on_change = on_change
         self.interval = interval

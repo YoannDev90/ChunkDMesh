@@ -60,17 +60,11 @@ class Batch(Base):
     assigned_to: Mapped[int | None] = mapped_column(ForeignKey("clients.id"))
     retry_count: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime, server_default=func.now(), onupdate=func.now()
-    )
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 
     world: Mapped[World] = relationship("World", back_populates="batches")
-    client: Mapped[Client | None] = relationship(
-        "Client", back_populates="batches"
-    )
-    validations: Mapped[list[Validation]] = relationship(
-        "Validation", back_populates="batch"
-    )
+    client: Mapped[Client | None] = relationship("Client", back_populates="batches")
+    validations: Mapped[list[Validation]] = relationship("Validation", back_populates="batch")
 
 
 class Task(Base):
@@ -114,18 +108,10 @@ async def init_db() -> None:
         await conn.run_sync(Base.metadata.create_all)
 
         # Indexes for frequent queries
-        await conn.exec_driver_sql(
-            "CREATE INDEX IF NOT EXISTS idx_batches_region ON batches(region_x, region_z)"
-        )
-        await conn.exec_driver_sql(
-            "CREATE INDEX IF NOT EXISTS idx_batches_status ON batches(status)"
-        )
-        await conn.exec_driver_sql(
-            "CREATE INDEX IF NOT EXISTS idx_batches_assigned ON batches(assigned_to)"
-        )
-        await conn.exec_driver_sql(
-            "CREATE INDEX IF NOT EXISTS idx_clients_token ON clients(token)"
-        )
+        await conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS idx_batches_region ON batches(region_x, region_z)")
+        await conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS idx_batches_status ON batches(status)")
+        await conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS idx_batches_assigned ON batches(assigned_to)")
+        await conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS idx_clients_token ON clients(token)")
 
 
 def get_db_session() -> AsyncSession:

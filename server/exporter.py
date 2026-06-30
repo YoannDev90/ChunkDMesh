@@ -43,11 +43,13 @@ class ExportManager:
     def list_archives(self) -> list[dict]:
         archives = []
         for f in self.exports_dir.glob(f"{self.world_name}_*.tar.gz"):
-            archives.append({
-                "name": f.name,
-                "path": str(f),
-                "size_mb": round(f.stat().st_size / (1024 * 1024), 2),
-            })
+            archives.append(
+                {
+                    "name": f.name,
+                    "path": str(f),
+                    "size_mb": round(f.stat().st_size / (1024 * 1024), 2),
+                }
+            )
         return sorted(archives, key=lambda x: x["name"], reverse=True)
 
     def get_latest_archive(self) -> Path | None:

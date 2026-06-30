@@ -90,8 +90,10 @@ class ClientTUI:
             url = self._server_url
             score = self._power_score
         text = Text.assemble(
-            ("ChunkDMesh Client", "bold green"), " | ",
-            (f"Server: {url}", "cyan") if url else ("Server: --", "dim"), " | ",
+            ("ChunkDMesh Client", "bold green"),
+            " | ",
+            (f"Server: {url}", "cyan") if url else ("Server: --", "dim"),
+            " | ",
             (f"Score: {score:.1f}", "yellow") if score else "",
         )
         return Panel(text, style="black")
@@ -105,7 +107,9 @@ class ClientTUI:
         table = Table.grid(padding=(0, 2))
         table.add_column(style="bold")
         table.add_column()
-        table.add_row("Status", Text(status, style="green" if "done" in status.lower() or "ready" in status.lower() else "yellow"))
+        table.add_row(
+            "Status", Text(status, style="green" if "done" in status.lower() or "ready" in status.lower() else "yellow")
+        )
         if detail:
             table.add_row("Detail", detail)
         if region:
@@ -124,9 +128,9 @@ class ClientTUI:
         table.add_column("CPU", justify="right")
         table.add_column("RSSΔ", justify="right")
         for s in recent:
-            wall = f"{s.wall_s*1000:.0f}ms" if s.wall_s < 1 else f"{s.wall_s:.1f}s"
-            cpu = f"{s.cpu_s*1000:.0f}ms" if s.cpu_s < 1 else f"{s.cpu_s:.1f}s"
-            rss = f"{s.rss_kb_delta//1024}M" if abs(s.rss_kb_delta) > 1024 else f"{s.rss_kb_delta}K"
+            wall = f"{s.wall_s * 1000:.0f}ms" if s.wall_s < 1 else f"{s.wall_s:.1f}s"
+            cpu = f"{s.cpu_s * 1000:.0f}ms" if s.cpu_s < 1 else f"{s.cpu_s:.1f}s"
+            rss = f"{s.rss_kb_delta // 1024}M" if abs(s.rss_kb_delta) > 1024 else f"{s.rss_kb_delta}K"
             table.add_row(s.name[:28], wall, cpu, rss)
         return Panel(table, title="Last Steps", border_style="green")
 
@@ -134,12 +138,13 @@ class ClientTUI:
         with self._lock:
             progress = self._current_progress
         import re as _re
+
         pct = 0
         if progress:
-            mp = _re.search(r'\((\d+(?:\.\d+)?)%\)', progress)
+            mp = _re.search(r"\((\d+(?:\.\d+)?)%\)", progress)
             if mp:
                 pct = float(mp.group(1))
-            mp2 = _re.search(r'(\d[\d,]*)\s*/\s*(\d[\d,]*)', progress.replace(',', ''))
+            mp2 = _re.search(r"(\d[\d,]*)\s*/\s*(\d[\d,]*)", progress.replace(",", ""))
             if mp2:
                 done = int(mp2.group(1))
                 total = int(mp2.group(2))

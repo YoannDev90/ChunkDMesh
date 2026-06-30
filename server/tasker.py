@@ -29,7 +29,9 @@ async def fill_tasks_table(config: Config):
 
         logger.info(
             "Filling tasks table with shape %s and radius %d chunks (%d regions)...",
-            shape, radius_chunks, radius_regions,
+            shape,
+            radius_chunks,
+            radius_regions,
         )
 
         tasks_to_add = []
@@ -71,8 +73,7 @@ async def attribute_tasks_to_client(client_id: int):
             )
             .outerjoin(
                 count_subq,
-                (Task.region_x == count_subq.c.region_x)
-                & (Task.region_z == count_subq.c.region_z),
+                (Task.region_x == count_subq.c.region_x) & (Task.region_z == count_subq.c.region_z),
             )
             .group_by(Task.id)
             .having(func.count(count_subq.c.batch_id) < max_assign)
@@ -90,9 +91,7 @@ async def attribute_tasks_to_client(client_id: int):
     logger.info("Attributing %d tasks to client %s: %s", len(region_coords), client_id, region_coords)
 
     async with get_db_session() as session:
-        world_result = await session.execute(
-            select(World).where(World.name == config.world_name).limit(1)
-        )
+        world_result = await session.execute(select(World).where(World.name == config.world_name).limit(1))
         world = world_result.scalar_one_or_none()
 
         if not world:

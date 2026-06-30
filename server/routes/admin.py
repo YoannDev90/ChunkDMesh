@@ -37,22 +37,22 @@ async def dashboard(request: Request):
 @router.get("/admin/heatmap")
 async def get_heatmap(request: Request):
     async with get_db_session() as session:
-        result = await session.execute(
-            select(Batch.region_x, Batch.region_z, Batch.status, Batch.assigned_to)
-        )
+        result = await session.execute(select(Batch.region_x, Batch.region_z, Batch.status, Batch.assigned_to))
         rows = result.all()
-    return JSONResponse({"regions": [
-        {"region_x": r.region_x, "region_z": r.region_z, "status": r.status, "assigned_to": r.assigned_to}
-        for r in rows
-    ]})
+    return JSONResponse(
+        {
+            "regions": [
+                {"region_x": r.region_x, "region_z": r.region_z, "status": r.status, "assigned_to": r.assigned_to}
+                for r in rows
+            ]
+        }
+    )
 
 
 @router.get("/admin/heatmap/html")
 async def get_heatmap_partial(request: Request):
     async with get_db_session() as session:
-        result = await session.execute(
-            select(Batch.region_x, Batch.region_z, Batch.status)
-        )
+        result = await session.execute(select(Batch.region_x, Batch.region_z, Batch.status))
         rows = result.all()
 
     if not rows:
@@ -70,9 +70,14 @@ async def get_heatmap_partial(request: Request):
         for x in range(min_x, max_x + 1)
     ]
 
-    return templates.TemplateResponse(request, "heatmap_partial.html", {
-        "regions": regions, "cols": max_x - min_x + 1,
-    })
+    return templates.TemplateResponse(
+        request,
+        "heatmap_partial.html",
+        {
+            "regions": regions,
+            "cols": max_x - min_x + 1,
+        },
+    )
 
 
 @router.get("/admin/stats")
@@ -96,18 +101,20 @@ async def admin_stats(request: Request):
     for s in statuses:
         status_counts[s] = status_counts.get(s, 0) + 1
 
-    return JSONResponse({
-        "storage": {
-            "region_files": len(regions),
-            "blobs": blob_count,
-            "blobs_size_mb": blob_size_mb,
-            "total_size_mb": storage.total_size_mb(),
-        },
-        "database": {
-            "total_batches": len(statuses),
-            "by_status": status_counts,
-        },
-    })
+    return JSONResponse(
+        {
+            "storage": {
+                "region_files": len(regions),
+                "blobs": blob_count,
+                "blobs_size_mb": blob_size_mb,
+                "total_size_mb": storage.total_size_mb(),
+            },
+            "database": {
+                "total_batches": len(statuses),
+                "by_status": status_counts,
+            },
+        }
+    )
 
 
 @router.get("/admin/progress")
@@ -144,11 +151,15 @@ async def get_progress_partial(request: Request):
         elif s == "hash_error":
             counts["errors"] += 1
 
-    return templates.TemplateResponse(request, "stats_partial.html", {
-        "total_files": progress["total_files"],
-        "total_size_mb": progress["total_size_mb"],
-        **counts,
-    })
+    return templates.TemplateResponse(
+        request,
+        "stats_partial.html",
+        {
+            "total_files": progress["total_files"],
+            "total_size_mb": progress["total_size_mb"],
+            **counts,
+        },
+    )
 
 
 @router.post("/admin/assemble")
@@ -165,11 +176,13 @@ async def export_world(request: Request, token_data: dict = Depends(verify_token
     manager = ExportManager(config.world_name)
     try:
         archive_path = manager.export()
-        return JSONResponse({
-            "status": "exported",
-            "archive": archive_path.name,
-            "download": f"/admin/download/{archive_path.name}",
-        })
+        return JSONResponse(
+            {
+                "status": "exported",
+                "archive": archive_path.name,
+                "download": f"/admin/download/{archive_path.name}",
+            }
+        )
     except FileNotFoundError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
