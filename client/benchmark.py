@@ -1,8 +1,9 @@
 """Client-side benchmark: generates a small zone to measure chunk generation speed."""
 
-import httpx
+import secrets
 import time
-from typing import Optional
+
+import httpx
 
 
 class BenchmarkRunner:
@@ -20,10 +21,28 @@ class BenchmarkRunner:
         dimension: str = "overworld",
         seed: int = 12345,
     ) -> dict:
-        import subprocess
         import os
+        import subprocess
 
         print(f"Running benchmark: radius={radius}, seed={seed}")
+
+        rcon_password = secrets.token_hex(16)
+
+        # Write server.properties with random RCON password
+        props_path = os.path.join(server_dir, "server.properties")
+        with open(props_path, "w") as f:
+            f.write("level-name=world\n")
+            f.write(f"level-seed={seed}\n")
+            f.write("enable-rcon=true\n")
+            f.write("rcon.port=25575\n")
+            f.write(f"rcon.password={rcon_password}\n")
+            f.write("online-mode=false\n")
+            f.write("gamemode=creative\n")
+            f.write("spawn-protection=0\n")
+            f.write("spawn-monsters=false\n")
+            f.write("spawn-animals=false\n")
+            f.write("spawn-npcs=false\n")
+            f.write("view-distance=8\n")
 
         cmd = [
             java_bin,
@@ -62,7 +81,6 @@ class BenchmarkRunner:
         print(f"  Server ready in {ready_time:.1f}s")
 
         rcon_port = 25575
-        rcon_password = "chunkdmesh"
 
         try:
             from rcon_client import RCONConnection

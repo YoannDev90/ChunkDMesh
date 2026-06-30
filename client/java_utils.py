@@ -6,7 +6,6 @@ import subprocess
 import sys
 import zipfile
 from pathlib import Path
-from typing import Optional, Tuple
 
 import httpx
 
@@ -28,12 +27,13 @@ JAVA_INSTALL_DIR = Path.home() / ".chunkdmesh" / "java"
 
 def _get_os_name() -> str:
     system = platform.system().lower()
-    if system == "linux":
-        return "linux"
-    elif system == "darwin":
-        return "mac"
-    elif system == "windows":
-        return "windows"
+    os_names = {
+        "linux": "linux",
+        "darwin": "mac",
+        "windows": "windows",
+    }
+    if system in os_names:
+        return os_names[system]
     raise RuntimeError(f"Unsupported OS: {system}")
 
 
@@ -46,7 +46,7 @@ def _get_arch() -> str:
     raise RuntimeError(f"Unsupported architecture: {machine}")
 
 
-def _parse_java_version(version_output: str) -> Optional[int]:
+def _parse_java_version(version_output: str) -> int | None:
     match = re.search(r'"(\d+)(?:\.\d+)*', version_output)
     if match:
         major = int(match.group(1))
@@ -56,7 +56,7 @@ def _parse_java_version(version_output: str) -> Optional[int]:
     return None
 
 
-def _find_java_in_dir(base: Path) -> Optional[Path]:
+def _find_java_in_dir(base: Path) -> Path | None:
     java_bin = base / "bin" / "java"
     if sys.platform == "win32":
         java_bin = base / "bin" / "java.exe"
@@ -65,14 +65,14 @@ def _find_java_in_dir(base: Path) -> Optional[Path]:
     return None
 
 
-def _search_java_in_path() -> Optional[Path]:
+def _search_java_in_path() -> Path | None:
     java_path = shutil.which("java")
     if java_path:
         return Path(java_path)
     return None
 
 
-def _search_java_home() -> Optional[Path]:
+def _search_java_home() -> Path | None:
     java_home = os.environ.get("JAVA_HOME")
     if java_home:
         found = _find_java_in_dir(Path(java_home))
@@ -97,8 +97,8 @@ def _search_common_locations() -> list[Path]:
             Path.home() / ".sdkman" / "candidates" / "java",
         ])
     elif system == "Windows":
-        program_files = os.environ.get("ProgramFiles", "C:\\Program Files")
-        program_files_x86 = os.environ.get("ProgramFiles(x86)", "C:\\Program Files (x86)")
+        program_files = os.environ.get("ProgramFiles", "C:\\Program Files")  # noqa: SIM112
+        program_files_x86 = os.environ.get("ProgramFiles(x86)", "C:\\Program Files (x86)")  # noqa: SIM112
         locations.extend([
             Path(program_files) / "Java",
             Path(program_files_x86) / "Java",
@@ -117,7 +117,7 @@ def _search_common_locations() -> list[Path]:
     return found
 
 
-def find_java() -> Optional[Path]:
+def find_java() -> Path | None:
     candidates = []
 
     path_java = _search_java_in_path()
@@ -148,7 +148,7 @@ def find_java() -> Optional[Path]:
     return None
 
 
-def get_java_version(java_path: Path) -> Optional[int]:
+def get_java_version(java_path: Path) -> int | None:
     java_bin = java_path / "bin" / "java"
     if sys.platform == "win32":
         java_bin = java_path / "bin" / "java.exe"
@@ -192,7 +192,9 @@ def _fetch_download_url(mc_version: str) -> str:
     resp.raise_for_status()
     data = resp.json()
 
-    binary = data.get("binary", {})
+    if not data:
+        raise RuntimeError("No assets found in Adoptium response")
+    binary = data[0].get("binary", {})
     pkg = binary.get("package", {})
     download_url = pkg.get("link")
     if not download_url:
@@ -220,8 +222,20 @@ def download_java(mc_version: str, dest: Path) -> Path:
             zf.extractall(dest)
     elif archive_path.suffix == ".gz" or filename.endswith(".tar.gz"):
         import tarfile
-        with tarfile.open(archive_path, "r:gz") as tf:
-            tf.extractall(dest)
+        import tempfile
+        with tempfile.TemporaryDirectory(dir=dest) as tmp:
+            with tarfile.open(archive_path, "r:gz") as tf:
+                tf.extractall(tmp)
+            extracted = Path(tmp)
+            children = list(extracted.iterdir())
+            for item in children:
+                target = dest / item.name
+                if target.exists():
+                    for p in target.rglob("*"):
+                        if p.is_file():
+                            p.chmod(p.stat().st_mode | 0o200)
+                    shutil.rmtree(target)
+                shutil.move(str(extracted / item.name), str(target))
 
     archive_path.unlink()
 
@@ -244,13 +258,14 @@ def ensure_java(mc_version: str) -> Path:
     java_dir = JAVA_INSTALL_DIR / f"jdk-{version}"
 
     if java_dir.exists():
-        if is_java_compatible(java_dir, mc_version):
-            print(f"Using cached Java: {java_dir}")
-            return java_dir
+        for d in java_dir.iterdir():
+            if d.is_dir() and is_java_compatible(d, mc_version):
+                print(f"Using cached Java: {d}")
+                return d
 
-    download_java(mc_version, java_dir)
+    java_home = download_java(mc_version, java_dir)
 
-    if not is_java_compatible(java_dir, mc_version):
+    if not is_java_compatible(java_home, mc_version):
         raise RuntimeError(f"Downloaded Java is not compatible with MC {mc_version}")
 
-    return java_dir
+    return java_home

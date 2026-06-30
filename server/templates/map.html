@@ -3,316 +3,263 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ChunkDMesh - Map</title>
+    <title>ChunkDMesh - Live Map</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0a0a0a; color: #e0e0e0; overflow: hidden; height: 100vh; }
-        #map-container { width: 100%; height: 100vh; position: relative; cursor: grab; overflow: hidden; }
-        #map-container:active { cursor: grabbing; }
-        #grid-canvas { position: absolute; top: 0; left: 0; }
-        #hud { position: fixed; top: 12px; left: 12px; background: rgba(15,15,15,0.92); border: 1px solid #333; border-radius: 8px; padding: 14px 18px; z-index: 10; pointer-events: none; }
-        #hud .title { font-size: 1rem; font-weight: 600; color: #4ade80; margin-bottom: 8px; }
-        #hud .row { font-size: 0.8rem; color: #aaa; line-height: 1.6; }
-        #hud .row span { color: #e0e0e0; font-family: monospace; }
-        #controls { position: fixed; top: 12px; right: 12px; z-index: 10; display: flex; flex-direction: column; gap: 6px; }
-        #controls button { width: 36px; height: 36px; border: 1px solid #333; border-radius: 6px; background: rgba(15,15,15,0.92); color: #e0e0e0; font-size: 1.1rem; cursor: pointer; display: flex; align-items: center; justify-content: center; }
-        #controls button:hover { background: #222; }
-        #tooltip { position: fixed; background: rgba(0,0,0,0.85); border: 1px solid #555; border-radius: 4px; padding: 6px 10px; font-size: 0.75rem; pointer-events: none; z-index: 20; display: none; }
-        #loading { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); color: #666; font-size: 1rem; z-index: 5; background: rgba(10,10,10,0.9); padding: 16px 24px; border-radius: 8px; }
-        #refresh-btn { position: fixed; bottom: 12px; right: 12px; z-index: 10; border: 1px solid #333; border-radius: 6px; background: rgba(15,15,15,0.92); color: #4ade80; padding: 8px 16px; cursor: pointer; font-size: 0.8rem; }
-        #refresh-btn:hover { background: #222; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow: hidden; background: #1a1a1a; }
+        #map { width: 100vw; height: 100vh; }
+        .leaflet-container { background: #222 !important; }
+
+        .coords-display {
+            background: rgba(0,0,0,0.7); color: #fff; padding: 8px 12px;
+            border-radius: 5px; font-size: 12px; font-family: monospace;
+        }
+        .coords-display a { color: #4ade80; }
+        .coords-display a:hover { text-decoration: none; }
+
+        .hover-overlay {
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%);
+            background: rgba(30,30,30,0.95); border: 2px solid #4CAF50;
+            border-radius: 10px; width: 90%; max-width: 380px; z-index: 2000;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.8); backdrop-filter: blur(5px);
+            display: none;
+        }
+        .hover-overlay.visible { display: block; }
+        .hover-header {
+            background: linear-gradient(135deg,#2d5016,#4CAF50); color: #fff;
+            padding: 12px 16px; border-radius: 8px 8px 0 0;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .hover-header h3 { font-size: 15px; }
+        .close-btn { background: none; border: none; color: #fff; font-size: 22px; cursor: pointer; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border-radius: 50%; }
+        .close-btn:hover { background: rgba(255,255,255,0.2); }
+        .hover-body { padding: 16px; color: #fff; }
+        .hover-section { margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+        .hover-section:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+        .hover-section label { display: block; font-size: 11px; color: #888; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .hover-value { font-family: monospace; font-size: 13px; color: #4ade80; word-break: break-all; }
+
+        #loading {
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%);
+            z-index: 2500; display: none;
+        }
+        #loading.visible { display: block; }
+        .spinner {
+            border: 3px solid rgba(76,175,80,0.2); border-top: 3px solid #4CAF50;
+            border-radius: 50%; width: 36px; height: 36px;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        .legend {
+            background: rgba(0,0,0,0.75); border-radius: 6px; padding: 8px 12px;
+            color: #ccc; font-size: 11px; line-height: 1.6;
+        }
+        .legend strong { color: #4ade80; }
+
+        @media (max-width: 600px) {
+            .hover-overlay { width: 95%; max-width: 95vw; }
+            .coords-display { font-size: 10px; padding: 5px 8px; }
+        }
     </style>
 </head>
 <body>
-    <div id="map-container">
-        <canvas id="grid-canvas"></canvas>
-        <div id="loading">Loading tiles...</div>
+    <div id="map"></div>
+
+    <div id="hover-overlay" class="hover-overlay">
+        <div class="hover-header">
+            <h3>Block Info</h3>
+            <button class="close-btn" id="close-hover">&times;</button>
+        </div>
+        <div class="hover-body">
+            <div class="hover-section">
+                <label>Coordinates</label>
+                <div class="hover-value" id="coord-value">--</div>
+            </div>
+            <div class="hover-section">
+                <label>Block</label>
+                <div class="hover-value" id="block-value">--</div>
+            </div>
+            <div class="hover-section">
+                <label>Biome</label>
+                <div class="hover-value" id="biome-value">--</div>
+            </div>
+        </div>
     </div>
 
-    <div id="hud">
-        <div class="title">ChunkDMesh Map</div>
-        <div class="row">Cursor: <span id="hud-cursor">--</span></div>
-        <div class="row">Zoom: <span id="hud-zoom">1.0x</span></div>
-        <div class="row">Region: <span id="hud-pos">--</span></div>
-        <div class="row">Tiles: <span id="hud-tiles">0</span></div>
+    <div id="loading" class="visible">
+        <div class="spinner"></div>
     </div>
 
-    <div id="controls">
-        <button id="btn-zoom-in" title="Zoom in">+</button>
-        <button id="btn-zoom-out" title="Zoom out">-</button>
-        <button id="btn-reset" title="Reset view">⌖</button>
-    </div>
-
-    <div id="tooltip">
-        <div id="tip-block"></div>
-    </div>
-
-    <button id="refresh-btn">↻ Refresh</button>
-
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
-    const container = document.getElementById('map-container');
-    const canvas = document.getElementById('grid-canvas');
-    const ctx = canvas.getContext('2d');
-    const tooltip = document.getElementById('tooltip');
-    const hudCursor = document.getElementById('hud-cursor');
-    const hudZoom = document.getElementById('hud-zoom');
-    const hudPos = document.getElementById('hud-pos');
-    const hudTiles = document.getElementById('hud-tiles');
+    // === Configuration ===
+    const CHUNK_SIZE = 16;
+    const TILE_SIZE = 256;
+    const API_BASE = '/admin/map';
+
+    // === Map Init — custom CRS: 256px tile = 16 blocks at max zoom ===
+    const MinecraftCRS = L.extend({}, L.CRS.Simple, {
+        scale: function(zoom) { return Math.pow(2, zoom - 1); },
+        transformation: new L.Transformation(1, 0, 1, 0)
+    });
+    const map = L.map('map', {
+        crs: MinecraftCRS,
+        minZoom: 0,
+        maxZoom: 5,
+        attributionControl: false,
+        zoomControl: false,
+    });
+
+    L.control.zoom({ position: 'topright' }).addTo(map);
+
+    // Custom tile layer: each tile = 1 chunk at zoom 5
+    L.tileLayer(`${API_BASE}/tile/{z}/{x}/{y}.png`, {
+        minZoom: 0,
+        maxZoom: 5,
+        tileSize: 256,
+        noWrap: true,
+        maxNativeZoom: 5,
+    }).addTo(map);
+
+    // === Coords Display ===
+    const coordDiv = L.control({ position: 'topright' });
+    coordDiv.onAdd = function() {
+        const div = L.DomUtil.create('div', 'coords-display');
+        div.id = 'coords-display';
+        div.innerHTML = 'X: -- | Z: --';
+        return div;
+    };
+    coordDiv.addTo(map);
+
+    map.on('mousemove', function(e) {
+        // CRS.Simple: lat = Z (vertical/south), lng = X (horizontal/east)
+        const wz = Math.floor(e.latlng.lat);
+        const wx = Math.floor(e.latlng.lng);
+        document.getElementById('coords-display').innerHTML =
+            `X: <strong>${wx}</strong> | Z: <strong>${wz}</strong>`;
+    });
+
+    // === Hover Overlay ===
+    const overlay = document.getElementById('hover-overlay');
     const loading = document.getElementById('loading');
 
-    const TILE = 512;
-    let zoom = 1.0;
-    let viewX = 0, viewY = 0;
-    let isDragging = false, dragStartX, dragStartY, viewStartX, viewStartY;
-    let regions = {};
-    let tileCache = {};
-    let loadingTiles = {};
-    let lastScale = 1;
-
-    function resize() {
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
-        render();
-    }
-    window.addEventListener('resize', resize);
-
-    function getScaleForZoom() {
-        if (zoom < 0.5) return 1;
-        if (zoom < 1) return 2;
-        if (zoom < 2) return 4;
-        if (zoom < 4) return 8;
-        return 16;
-    }
-
-    function tileKey(rx, rz, scale) { return `${rx},${rz},s${scale}`; }
-
-    function getVisibleTiles() {
-        const ts = TILE * zoom;
-        const scale = getScaleForZoom();
-        const keys = [];
-        for (const key of Object.keys(regions)) {
-            const [rx, rz] = key.split(',').map(Number);
-            const sx = viewX + rx * ts;
-            const sy = viewY + rz * ts;
-            if (sx + ts >= -ts && sx < canvas.width + ts &&
-                sy + ts >= -ts && sy < canvas.height + ts) {
-                keys.push(key);
-            }
-        }
-        return keys;
-    }
-
-    function loadTile(rx, rz) {
-        const scale = getScaleForZoom();
-        const key = tileKey(rx, rz, scale);
-        if (tileCache[key] || loadingTiles[key]) return;
-        loadingTiles[key] = true;
-        const img = new Image();
-        img.onload = () => {
-            tileCache[key] = img;
-            delete loadingTiles[key];
-            render();
-        };
-        img.onerror = () => {
-            delete loadingTiles[key];
-        };
-        img.src = `/admin/map/render/${rx}/${rz}?scale=${scale}&t=${Date.now()}`;
-    }
-
-    function loadVisibleTiles() {
-        for (const key of getVisibleTiles()) {
-            const [rx, rz] = key.split(',').map(Number);
-            loadTile(rx, rz);
-        }
-    }
-
-    function checkScaleChange() {
-        const newScale = getScaleForZoom();
-        if (newScale !== lastScale) {
-            lastScale = newScale;
-            for (const k of Object.keys(tileCache)) {
-                delete tileCache[k];
-            }
-            for (const k of Object.keys(loadingTiles)) {
-                delete loadingTiles[k];
-            }
-        }
-    }
-
-    function render() {
-        ctx.fillStyle = '#0a0a0a';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-        const ts = TILE * zoom;
-        const scale = getScaleForZoom();
-        const keys = Object.keys(regions);
-        let loadedCount = 0;
-
-        for (const key of keys) {
-            const [rx, rz] = key.split(',').map(Number);
-            const sx = viewX + rx * ts;
-            const sy = viewY + rz * ts;
-
-            if (sx + ts >= -ts && sx < canvas.width + ts &&
-                sy + ts >= -ts && sy < canvas.height + ts) {
-                const tkey = tileKey(rx, rz, scale);
-                if (tileCache[tkey]) {
-                    ctx.drawImage(tileCache[tkey], sx, sy, ts, ts);
-                    loadedCount++;
-                } else {
-                    ctx.fillStyle = 'rgba(30,30,30,0.5)';
-                    ctx.fillRect(sx, sy, ts, ts);
-                }
-            }
-        }
-
-        hudTiles.textContent = `${loadedCount}/${getVisibleTiles().length}`;
-
-        ctx.strokeStyle = 'rgba(255,255,255,0.10)';
-        ctx.lineWidth = 1;
-        for (const key of keys) {
-            const [rx, rz] = key.split(',').map(Number);
-            const sx = viewX + rx * ts;
-            const sy = viewY + rz * ts;
-            if (sx + ts >= -ts && sx < canvas.width + ts &&
-                sy + ts >= -ts && sy < canvas.height + ts) {
-                ctx.strokeRect(sx, sy, ts, ts);
-            }
-        }
-
-        if (zoom >= 1.5) {
-            ctx.fillStyle = 'rgba(255,255,255,0.35)';
-            ctx.font = `${Math.max(9, 10 * zoom)}px monospace`;
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            for (const key of keys) {
-                const [rx, rz] = key.split(',').map(Number);
-                const sx = viewX + (rx + 0.5) * ts;
-                const sy = viewY + (rz + 0.5) * ts;
-                if (sx >= -ts && sx < canvas.width + ts &&
-                    sy >= -ts && sy < canvas.height + ts) {
-                    ctx.fillText(`${rx},${rz}`, sx, sy);
-                }
-            }
-        }
-
-        const loadedTotal = Object.keys(tileCache).length;
-        if (loadedTotal === 0 && keys.length > 0) {
-            loading.style.display = 'block';
-            loading.textContent = `Loading tiles... (${loadedTotal}/${keys.length})`;
-        } else {
-            loading.style.display = 'none';
-        }
-    }
-
-    container.addEventListener('mousedown', (e) => {
-        isDragging = true;
-        dragStartX = e.clientX;
-        dragStartY = e.clientY;
-        viewStartX = viewX;
-        viewStartY = viewY;
+    document.getElementById('close-hover').onclick = () => {
+        overlay.classList.remove('visible');
+    };
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') overlay.classList.remove('visible');
     });
 
-    window.addEventListener('mousemove', (e) => {
-        if (isDragging) {
-            viewX = viewStartX + (e.clientX - dragStartX);
-            viewY = viewStartY + (e.clientY - dragStartY);
-            render();
-            loadVisibleTiles();
-        }
+    map.on('click', async function(e) {
+        // CRS.Simple: lat = Z (vertical/south), lng = X (horizontal/east)
+        const wz = Math.floor(e.latlng.lat);
+        const wx = Math.floor(e.latlng.lng);
+        const cx = Math.floor(wx / CHUNK_SIZE);
+        const cz = Math.floor(wz / CHUNK_SIZE);
+        const lx = ((wx % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
+        const lz = ((wz % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
 
-        const mx = (e.clientX - viewX) / zoom;
-        const my = (e.clientY - viewY) / zoom;
-        const bx = Math.floor(mx);
-        const bz = Math.floor(my);
-        const rx = Math.floor(bx / TILE);
-        const rz = Math.floor(bz / TILE);
+        loading.classList.add('visible');
 
-        hudCursor.textContent = `${bx}, ${bz}`;
-        hudPos.textContent = `r.${rx}.${rz}`;
-
-        const key = `${rx},${rz}`;
-        if (regions[key]) {
-            tooltip.style.display = 'block';
-            tooltip.style.left = (e.clientX + 14) + 'px';
-            tooltip.style.top = (e.clientY + 14) + 'px';
-            document.getElementById('tip-block').textContent = `Region (${rx}, ${rz})`;
-        } else {
-            tooltip.style.display = 'none';
-        }
-    });
-
-    window.addEventListener('mouseup', () => { isDragging = false; });
-
-    container.addEventListener('wheel', (e) => {
-        e.preventDefault();
-        const factor = e.deltaY < 0 ? 1.2 : 0.833;
-        const newZoom = Math.max(0.1, Math.min(20, zoom * factor));
-        const mx = e.clientX;
-        const my = e.clientY;
-        viewX = mx - (mx - viewX) * (newZoom / zoom);
-        viewY = my - (my - viewY) * (newZoom / zoom);
-        zoom = newZoom;
-        hudZoom.textContent = zoom.toFixed(1) + 'x';
-        checkScaleChange();
-        render();
-        loadVisibleTiles();
-    }, { passive: false });
-
-    document.getElementById('btn-zoom-in').addEventListener('click', () => {
-        zoom = Math.min(20, zoom * 1.4);
-        hudZoom.textContent = zoom.toFixed(1) + 'x';
-        checkScaleChange();
-        render();
-        loadVisibleTiles();
-    });
-    document.getElementById('btn-zoom-out').addEventListener('click', () => {
-        zoom = Math.max(0.1, zoom * 0.7);
-        hudZoom.textContent = zoom.toFixed(1) + 'x';
-        checkScaleChange();
-        render();
-        loadVisibleTiles();
-    });
-    document.getElementById('btn-reset').addEventListener('click', () => {
-        zoom = 1.0;
-        viewX = (canvas.width - TILE) / 2;
-        viewY = (canvas.height - TILE) / 2;
-        hudZoom.textContent = '1.0x';
-        render();
-        loadVisibleTiles();
-    });
-
-    document.getElementById('refresh-btn').addEventListener('click', () => {
-        tileCache = {};
-        render();
-        fetchRegions();
-    });
-
-    async function fetchRegions() {
         try {
-            const resp = await fetch('/admin/map/regions');
+            const resp = await fetch(
+                `${API_BASE}/hover/${cx}/${cz}/${lx}/${lz}`
+            );
             const data = await resp.json();
-            const newRegions = {};
-            for (const r of data.regions) {
-                newRegions[`${r.region_x},${r.region_z}`] = r.status;
-            }
-            regions = newRegions;
-            if (Object.keys(regions).length > 0) {
-                loading.textContent = 'Loading tiles...';
-                loading.style.display = 'block';
+
+            if (data.error) {
+                document.getElementById('coord-value').textContent = 'Error';
+                document.getElementById('block-value').textContent = data.error;
+                document.getElementById('biome-value').textContent = '-';
             } else {
-                loading.textContent = 'No regions generated yet.';
+                const c = data.coords;
+                document.getElementById('coord-value').textContent =
+                    `X: ${c.world_x} | Y: ${c.y} | Z: ${c.world_z}`;
+                document.getElementById('block-value').textContent =
+                    `${data.block.name} (h=${data.block.height})`;
+                document.getElementById('biome-value').textContent =
+                    `${data.biome.name}`;
             }
-            render();
-            loadVisibleTiles();
-        } catch (e) {
-            console.error('Failed to fetch regions:', e);
+            overlay.classList.add('visible');
+        } catch (err) {
+            document.getElementById('coord-value').textContent = 'Fetch error';
+            document.getElementById('block-value').textContent = err.message;
+            document.getElementById('biome-value').textContent = '-';
+            overlay.classList.add('visible');
+        } finally {
+            loading.classList.remove('visible');
         }
+    });
+
+    // === Legend ===
+    const legend = L.control({ position: 'bottomright' });
+    legend.onAdd = function() {
+        const div = L.DomUtil.create('div', 'legend');
+        div.innerHTML = `
+            <strong>ChunkDMesh Map</strong><br>
+            Click any tile for block info<br>
+            Zoom: 0-5 (5 = 1 chunk)
+        `;
+        return div;
+    };
+    legend.addTo(map);
+
+    // Set initial view centered on 0,0
+    map.setView([0, 0], 3);
+
+    // Hide initial loading after tiles start loading
+    map.on('tileload', function() {
+        loading.classList.remove('visible');
+    });
+    setTimeout(() => loading.classList.remove('visible'), 3000);
+
+    // === Region overlay (task grid) — disabled by default ===
+    let regionOverlay = L.layerGroup().addTo(map);
+    let regionOverlayVisible = false;
+
+    async function loadRegionOverlay() {
+        if (!regionOverlayVisible) return;
+        try {
+            regionOverlay.clearLayers();
+            const resp = await fetch(`${API_BASE}/regions`);
+            const data = await resp.json();
+            for (const r of data.regions || []) {
+                if (r.region_x === undefined || r.region_z === undefined) continue;
+                const z1 = r.region_z * 32 * CHUNK_SIZE;
+                const x1 = r.region_x * 32 * CHUNK_SIZE;
+                const z2 = z1 + 32 * CHUNK_SIZE;
+                const x2 = x1 + 32 * CHUNK_SIZE;
+                const color = r.status === 'validated' ? '#4ade80' :
+                              r.status === 'completed' ? '#60a5fa' :
+                              r.status === 'working'   ? '#facc15' :
+                              r.status === 'assigned'  ? '#fb923c' :
+                                                        '#555';
+                L.rectangle([[z1, x1], [z2, x2]], {
+                    color, weight: 1, fillOpacity: 0.05, interactive: false,
+                }).addTo(regionOverlay);
+            }
+        } catch (e) {}
     }
 
-    resize();
-    fetchRegions();
-    setInterval(fetchRegions, 5000);
+    // Toggle button for region overlay
+    const gridBtn = L.control({ position: 'bottomleft' });
+    gridBtn.onAdd = function() {
+        const btn = L.DomUtil.create('button', '');
+        btn.innerHTML = '▦ Grid';
+        btn.style.cssText = 'background:rgba(0,0,0,0.7);color:#aaa;border:1px solid #555;border-radius:4px;padding:4px 10px;font-size:11px;cursor:pointer;';
+        btn.onclick = function() {
+            regionOverlayVisible = !regionOverlayVisible;
+            btn.style.color = regionOverlayVisible ? '#4ade80' : '#aaa';
+            if (regionOverlayVisible) loadRegionOverlay();
+            else regionOverlay.clearLayers();
+        };
+        return btn;
+    };
+    gridBtn.addTo(map);
+
+    setInterval(loadRegionOverlay, 10000);
     </script>
 </body>
 </html>

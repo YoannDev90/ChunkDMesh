@@ -7,11 +7,9 @@ server bandwidth dramatically.
 
 from __future__ import annotations
 
-import hashlib
 import logging
 import os
 from pathlib import Path
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -36,8 +34,8 @@ def create_torrent(
 
     try:
         import libtorrent as lt
-    except ImportError:
-        raise RuntimeError("libtorrent is required for P2P. Install with: pip install libtorrent")
+    except ImportError as e:
+        raise RuntimeError("libtorrent is required for P2P. Install with: pip install libtorrent") from e
 
     fs = lt.file_storage()
     lt.add_files(fs, str(file_path))
@@ -63,8 +61,8 @@ class TorrentSeeder:
         try:
             import libtorrent as lt
             self._lt = lt
-        except ImportError:
-            raise RuntimeError("libtorrent is required for P2P")
+        except ImportError as e:
+            raise RuntimeError("libtorrent is required for P2P") from e
 
         self._save_path = str(save_path or Path.home() / ".chunkdmesh" / "downloads")
         os.makedirs(self._save_path, exist_ok=True)

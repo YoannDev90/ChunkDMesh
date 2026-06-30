@@ -1,8 +1,8 @@
+import contextlib
 import logging
 import socket
 import struct
 import time
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -17,10 +17,10 @@ class _RCONSocket:
         self.port = port
         self.password = password
         self.timeout = timeout
-        self._sock: Optional[socket.socket] = None
+        self._sock: socket.socket | None = None
         self._id_counter = 0
 
-    def connect(self):
+    def connect(self) -> None:
         self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._sock.settimeout(self.timeout)
         self._sock.connect((self.host, self.port))
@@ -31,7 +31,7 @@ class _RCONSocket:
             self._id_counter = 1
         return self._id_counter
 
-    def _send(self, req_id: int, pkt_type: int, body: bytes):
+    def _send(self, req_id: int, pkt_type: int, body: bytes) -> None:
         payload = struct.pack("<ii", req_id, pkt_type) + body + b"\x00\x00"
         packet = struct.pack("<i", len(payload)) + payload
         self._sock.sendall(packet)
@@ -66,12 +66,10 @@ class _RCONSocket:
         req_id, pkt_type, body = self._recv()
         return body.decode("utf-8", errors="replace")
 
-    def close(self):
+    def close(self) -> None:
         if self._sock:
-            try:
+            with contextlib.suppress(Exception):
                 self._sock.close()
-            except Exception:
-                pass
             self._sock = None
 
 
@@ -80,7 +78,7 @@ class RCONConnection:
         self.host = host
         self.port = port
         self.password = password
-        self._client: Optional[_RCONSocket] = None
+        self._client: _RCONSocket | None = None
 
     def connect(self, retries: int = 10, delay: float = 2.0) -> bool:
         for attempt in range(1, retries + 1):
@@ -109,7 +107,7 @@ class RCONConnection:
         logger.info("RCON response: %s", response)
         return response
 
-    def disconnect(self):
+    def disconnect(self) -> None:
         if self._client:
             self._client.close()
             self._client = None
@@ -127,11 +125,11 @@ class ChunkyController:
     def start(
         self,
         world: str = "world",
-        radius: Optional[int] = None,
-        center_x: Optional[int] = None,
-        center_z: Optional[int] = None,
-        shape: Optional[str] = None,
-        dimension: Optional[str] = None,
+        radius: int | None = None,
+        center_x: int | None = None,
+        center_z: int | None = None,
+        shape: str | None = None,
+        dimension: str | None = None,
     ) -> str:
         # IMPORTANT: 'chunky world' MUST come first.
         # It loads the world's saved config which overwrites session settings.

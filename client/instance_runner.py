@@ -1,12 +1,10 @@
-import asyncio
+import contextlib
 import logging
-import signal
 import subprocess
-import sys
 import threading
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -35,14 +33,14 @@ class MCServer:
         self.xms_mb = xms_mb
         self.extra_jvm_args = extra_jvm_args or []
 
-        self._process: Optional[subprocess.Popen] = None
-        self._stdout_thread: Optional[threading.Thread] = None
-        self._stderr_thread: Optional[threading.Thread] = None
+        self._process: subprocess.Popen | None = None
+        self._stdout_thread: threading.Thread | None = None
+        self._stderr_thread: threading.Thread | None = None
         self._ready = False
         self._stopped = False
         self._log_lines: list[str] = []
-        self._on_ready: Optional[Callable] = None
-        self._on_line: Optional[Callable[[str], None]] = None
+        self._on_ready: Callable | None = None
+        self._on_line: Callable[[str], None] | None = None
 
     def _build_command(self) -> list[str]:
         cmd = [
@@ -59,7 +57,7 @@ class MCServer:
         ]
         return cmd
 
-    def start(self, on_ready: Optional[Callable] = None, on_line: Optional[Callable[[str], None]] = None):
+    def start(self, on_ready: Callable | None = None, on_line: Callable[[str], None] | None = None):
         if self._process and self._process.poll() is None:
             raise RuntimeError("Server is already running")
 
@@ -96,10 +94,8 @@ class MCServer:
             logger.info("[MC] %s", line)
 
             if self._on_line:
-                try:
+                with contextlib.suppress(Exception):
                     self._on_line(line)
-                except Exception:
-                    pass
 
             if not self._ready:
                 for pattern in READY_PATTERNS:
@@ -107,10 +103,8 @@ class MCServer:
                         self._ready = True
                         logger.info("Server is ready!")
                         if self._on_ready:
-                            try:
+                            with contextlib.suppress(Exception):
                                 self._on_ready()
-                            except Exception:
-                                pass
                         break
 
     def wait_until_ready(self, timeout: float = 300) -> bool:
@@ -161,12 +155,12 @@ class MCServer:
 
         logger.info("Server stopped")
 
-    def get_log_lines(self, last_n: Optional[int] = None) -> list[str]:
+    def get_log_lines(self, last_n: int | None = None) -> list[str]:
         if last_n:
             return self._log_lines[-last_n:]
         return list(self._log_lines)
 
-    def get_pid(self) -> Optional[int]:
+    def get_pid(self) -> int | None:
         if self._process:
             return self._process.pid
         return None

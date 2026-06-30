@@ -1,15 +1,17 @@
+import atexit
+
 import httpx
-from typing import Optional
 
 CHUNKY_MODRINTH_PROJECT_ID = "fALzjamp"
 FABRIC_API_PROJECT_ID = "P7dR8mSH"
 
 _http_client = httpx.Client(follow_redirects=True, timeout=15)
+atexit.register(_http_client.close)
 
 
 def get_modrinth_download(
     project_id: str, version: str, loader: str, minecraft_version: str
-) -> Optional[dict]:
+) -> dict | None:
     url = f"https://api.modrinth.com/v2/project/{project_id}/version"
     params = {}
     if loader:

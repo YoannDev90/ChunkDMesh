@@ -5,20 +5,14 @@ Checks the server for a newer version of the client and updates itself.
 
 from __future__ import annotations
 
-import hashlib
-import json
-import os
 import shutil
-import sys
 from pathlib import Path
-from typing import Optional
 
 import httpx
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "server"))
-from version import CLIENT_VERSION  # noqa: E402
 VERSION_FILE = Path(__file__).resolve().parent / ".version"
 UPDATE_CACHE_DIR = Path.home() / ".chunkdmesh" / "updates"
+CLIENT_VERSION = "0.1.0"
 
 
 def get_current_version() -> str:
@@ -27,7 +21,7 @@ def get_current_version() -> str:
     return CLIENT_VERSION
 
 
-def check_update(server_url: str, token: str) -> Optional[dict]:
+def check_update(server_url: str, token: str) -> dict | None:
     headers = {"Authorization": f"Bearer {token}"}
     try:
         with httpx.Client(follow_redirects=True, timeout=10) as client:
@@ -49,12 +43,14 @@ def download_update(server_url: str, token: str, version: str) -> Path:
     archive_path = UPDATE_CACHE_DIR / f"client_{version}.tar.gz"
 
     print(f"Downloading update v{version}...")
-    with httpx.Client(follow_redirects=True, timeout=120, headers=headers) as client:
-        with client.stream("GET", f"{server_url}/client/download") as resp:
-            resp.raise_for_status()
-            with open(archive_path, "wb") as f:
-                for chunk in resp.iter_bytes(chunk_size=1024 * 64):
-                    f.write(chunk)
+    with (
+        httpx.Client(follow_redirects=True, timeout=120, headers=headers) as client,
+        client.stream("GET", f"{server_url}/client/download") as resp,
+    ):
+        resp.raise_for_status()
+        with open(archive_path, "wb") as f:
+            for chunk in resp.iter_bytes(chunk_size=1024 * 64):
+                f.write(chunk)
 
     return archive_path
 
@@ -73,7 +69,14 @@ def apply_update(archive_path: Path):
     print("Applying update...")
     try:
         with tarfile.open(archive_path, "r:gz") as tar:
-            tar.extractall(client_dir.parent)
+            for member in tar.getmembers():
+                member_path = Path(member.name)
+                if member_path.is_absolute() or ".." in member_path.parts:
+                    raise tarfile.ExtractError(f"Path traversal blocked: {member.name}")
+            if hasattr(tarfile, "data_filter"):
+                tar.extractall(client_dir.parent, filter="data")
+            else:
+                tar.extractall(client_dir.parent)
 
         VERSION_FILE.write_text(archive_path.stem.split("_")[1])
         print("Update applied successfully!")
