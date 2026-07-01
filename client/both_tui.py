@@ -52,6 +52,8 @@ _STEP_LABELS = {
 
 
 class BothTUI:
+    """Unified TUI for 'both' mode — 5 panels, no header/footer."""
+
     def __init__(self, client_tui: ClientTUI, console_file=None):
         self.client_tui = client_tui
         self._running = False
@@ -68,12 +70,15 @@ class BothTUI:
         self._mem_history: deque[float] = deque(maxlen=30)
 
     def set_client_error(self, error: str):
+        """Set client error state for display."""
         self._client_error = error
 
     def set_client_done(self):
+        """Mark client as done."""
         self._client_done = True
 
     def run(self):
+        """Start the unified TUI event loop."""
         self._running = True
         layout = self._build_layout()
         try:
@@ -91,6 +96,7 @@ class BothTUI:
             self._running = False
 
     def _safe_update(self, layout, *path_and_fn):
+        """Safely update a layout panel, catching and displaying errors."""
         try:
             fn = path_and_fn[1]
             panel = fn()
@@ -109,9 +115,11 @@ class BothTUI:
                 pass
 
     def stop(self):
+        """Stop the unified TUI event loop."""
         self._running = False
 
     def _build_layout(self) -> Layout:
+        """Construct the 5-panel layout tree for both mode."""
         layout = Layout()
         layout.split_row(
             Layout(name="left"),
@@ -131,6 +139,7 @@ class BothTUI:
     # ── Left: Checklist + Progress ────────────────────────────
 
     def _render_checklist(self) -> Panel:
+        """Render client checklist with step completion and progress bar."""
         ct = self.client_tui
         with ct._lock:
             status = ct._status
@@ -209,6 +218,7 @@ class BothTUI:
     # ── Left: Resource Monitor ────────────────────────────────
 
     def _render_resources(self) -> Panel:
+        """Render system resource monitor with CPU/memory sparklines."""
         sys = sample_system()
         self._cpu_history.append(sys.cpu_load_1)
         self._mem_history.append(sys.mem_used_pct)
@@ -253,7 +263,15 @@ class BothTUI:
 
     @staticmethod
     def _sparkline(data: deque, max_val: float, width: int = 40) -> str:
-        """Render a sparkline from recent samples."""
+        """Render a unicode sparkline from recent data samples.
+
+        Args:
+            data: Time-series values.
+            max_val: Maximum value for scaling.
+            width: Character width of output.
+
+        Returns: Sparkline string.
+        """
         if not data:
             return "░" * width
         blocks = " ▁▂▃▄▅▆▇█"
@@ -271,6 +289,7 @@ class BothTUI:
     # ── Right: Project Info ───────────────────────────────────
 
     def _render_project(self) -> Panel:
+        """Render project info panel with world config, uptime, and task progress."""
         from state import server_state
 
         stats = server_state.snapshot()
@@ -325,6 +344,7 @@ class BothTUI:
     # ── Right: API Requests ───────────────────────────────────
 
     def _render_requests(self) -> Panel:
+        """Render recent API requests panel."""
         from state import server_state
 
         recent = server_state.recent_requests()
@@ -346,6 +366,7 @@ class BothTUI:
     # ── Right: Live Logs ──────────────────────────────────────
 
     def _render_logs(self) -> Panel:
+        """Render merged server and client log entries."""
         from state import server_state
 
         logs = server_state.recent_logs()

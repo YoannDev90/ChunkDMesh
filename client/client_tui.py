@@ -16,6 +16,8 @@ from rich.text import Text
 
 
 class ClientTUI:
+    """Rich-based TUI showing status, progress, logs, and system metrics."""
+
     MAX_LOG = 50
 
     def __init__(self):
@@ -41,36 +43,50 @@ class ClientTUI:
         self._progress_task = self._progress_bar.add_task("Idle", total=100)
 
     def set_status(self, status: str, detail: str = ""):
+        """Update current status display."""
         with self._lock:
             self._status = status
             self._status_detail = detail
 
     def set_region(self, text: str):
+        """Update current region label."""
         with self._lock:
             self._current_region = text
 
     def set_progress(self, text: str):
+        """Update current progress text."""
         with self._lock:
             self._current_progress = text
 
     def set_batch_count(self, n: int):
+        """Update batch count."""
         with self._lock:
             self._batch_count = n
 
     def set_power_score(self, s: float):
+        """Update power score."""
         with self._lock:
             self._power_score = s
 
     def set_server_url(self, url: str):
+        """Update server URL display."""
         with self._lock:
             self._server_url = url
 
     def log(self, icon: str, msg: str):
+        """Append log entry to buffer.
+
+        Args:
+            icon: Emoji/icon prefix.
+            msg: Log message text.
+        """
         ts = time.strftime("%H:%M:%S")
         with self._lock:
             self._log_buffer.append((ts, icon, msg))
 
     def _build_layout(self) -> Layout:
+        """Construct the TUI layout tree."""
+
         layout = Layout()
         layout.split_column(
             Layout(name="header", size=3),
@@ -92,6 +108,7 @@ class ClientTUI:
         return layout
 
     def _render_header(self) -> Panel:
+        """Render top header panel with server URL and power score."""
         with self._lock:
             url = self._server_url
             score = self._power_score
@@ -105,6 +122,7 @@ class ClientTUI:
         return Panel(text, style="black")
 
     def _render_status(self) -> Panel:
+        """Render status panel with current state, region, batch count."""
         with self._lock:
             status = self._status
             detail = self._status_detail
@@ -124,6 +142,7 @@ class ClientTUI:
         return Panel(table, title="Status", border_style="blue")
 
     def _render_steps(self) -> Panel:
+        """Render per-step metrics from monitor."""
         steps = monitor.steps()
         if not steps:
             return Panel("No steps measured yet", title="Per-Step Metrics", border_style="dim")
@@ -141,6 +160,7 @@ class ClientTUI:
         return Panel(table, title="Last Steps", border_style="green")
 
     def _render_progress(self) -> Panel:
+        """Render progress bar with Chunky generation percentage."""
         import re as _re
 
         with self._lock:
@@ -165,6 +185,7 @@ class ClientTUI:
         return Panel(Align.center("\n".join([str(e) for e in elements])), title="Progress", border_style="yellow")
 
     def _render_log(self) -> Panel:
+        """Render log panel with recent log entries."""
         with self._lock:
             lines = list(self._log_buffer)
         table = Table(box=None, padding=(0, 1), show_header=False)
@@ -176,6 +197,7 @@ class ClientTUI:
         return Panel(table, title="Log", border_style="magenta")
 
     def _render_system(self) -> Panel:
+        """Render system resource panel with CPU load and memory."""
         sys = sample_system()
         with self._lock:
             self._system = sys
@@ -187,6 +209,7 @@ class ClientTUI:
         return Panel(table, title="System", border_style="cyan")
 
     def run(self):
+        """Start the TUI event loop with live display."""
         self._running = True
         layout = self._build_layout()
         self._layout = layout
@@ -208,6 +231,7 @@ class ClientTUI:
             pass
 
     def stop(self):
+        """Stop the TUI event loop."""
         self._running = False
 
 
@@ -222,24 +246,30 @@ def log(icon: str, msg: str):
 
 
 def set_status(status: str, detail: str = ""):
+    """Update TUI status from main module."""
     tui.set_status(status, detail)
 
 
 def set_region(text: str):
+    """Update TUI region display from main module."""
     tui.set_region(text)
 
 
 def set_progress(text: str):
+    """Update TUI progress from main module."""
     tui.set_progress(text)
 
 
 def set_batch_count(n: int):
+    """Update TUI batch count from main module."""
     tui.set_batch_count(n)
 
 
 def set_power_score(s: float):
+    """Update TUI power score from main module."""
     tui.set_power_score(s)
 
 
 def set_server_url(url: str):
+    """Update TUI server URL from main module."""
     tui.set_server_url(url)

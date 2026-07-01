@@ -17,6 +17,8 @@ PROC_MEMINFO = PROC / "meminfo"
 
 @dataclass
 class StepSnapshot:
+    """Snapshot of resource usage for a single step."""
+
     name: str
     wall_s: float = 0.0
     cpu_s: float = 0.0
@@ -28,6 +30,8 @@ class StepSnapshot:
 
 @dataclass
 class SystemSample:
+    """Snapshot of system-wide CPU load and memory."""
+
     cpu_load_1: float = 0.0
     cpu_load_5: float = 0.0
     cpu_load_15: float = 0.0
@@ -87,6 +91,7 @@ def _read_thread_count() -> int:
 
 
 def _clk_tck() -> int:
+    """Get system clock ticks per second."""
     return os.sysconf(os.sysconf_names["SC_CLK_TCK"])
 
 
@@ -95,6 +100,10 @@ PAGE_SIZE = os.sysconf(os.sysconf_names["SC_PAGE_SIZE"])
 
 
 def sample_process() -> dict:
+    """Sample current process resource usage from /proc.
+
+    Returns: Dict with cpu_ticks, rss_kb, read_bytes, write_bytes, threads.
+    """
     stat = _read_self_stat()
     io = _read_self_io()
     return {
@@ -109,6 +118,10 @@ def sample_process() -> dict:
 
 
 def sample_system() -> SystemSample:
+    """Sample system-wide CPU load and memory from /proc.
+
+    Returns: SystemSample dataclass.
+    """
     load = (0.0, 0.0, 0.0)
     mem_total = 0
     mem_avail = 0
@@ -151,6 +164,11 @@ class StepMonitor:
 
     @contextmanager
     def measure(self, name: str):
+        """Context manager to measure resource usage of a named step.
+
+        Args:
+            name: Step name for identification.
+        """
         snap = self._start(name)
         try:
             yield snap
@@ -158,6 +176,13 @@ class StepMonitor:
             self._finish(snap)
 
     def _start(self, name: str) -> StepSnapshot:
+        """Begin measurement for a step.
+
+        Args:
+            name: Step name.
+
+        Returns: StepSnapshot being populated.
+        """
         baseline = sample_process()
         t0 = time.monotonic()
         with self._lock:
@@ -168,6 +193,11 @@ class StepMonitor:
         return snap
 
     def _finish(self, snap: StepSnapshot):
+        """Finalize measurement and record deltas.
+
+        Args:
+            snap: StepSnapshot from _start.
+        """
         final = sample_process()
         t1 = time.monotonic()
         baseline = self._baseline
@@ -200,14 +230,17 @@ class StepMonitor:
             self._baseline = None
 
     def steps(self) -> list[StepSnapshot]:
+        """Return copy of all recorded step snapshots."""
         with self._lock:
             return list(self._steps)
 
     def clear(self):
+        """Clear all recorded steps."""
         with self._lock:
             self._steps.clear()
 
     def latest(self) -> StepSnapshot | None:
+        """Return most recent step snapshot, or None."""
         with self._lock:
             return self._steps[-1] if self._steps else None
 
@@ -221,6 +254,8 @@ monitor = StepMonitor()
 
 @dataclass
 class MetricPoint:
+    """A single metric data point for OTEL export."""
+
     name: str
     value: float
     unit: str = "1"

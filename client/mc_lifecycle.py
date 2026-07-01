@@ -11,7 +11,20 @@ from rcon_client import ChunkyController, RCONConnection
 
 
 class MCLifecycle:
+    """Manages Minecraft server lifecycle: launch, log streaming, RCON."""
+
     def __init__(self, server_dir: Path, java_bin: Path, jar_path: Path, asset_mgr, seed: int, mc_version: str, log_fn):
+        """Initialize MCLifecycle.
+
+        Args:
+            server_dir: Server root directory.
+            java_bin: Path to java binary.
+            jar_path: Path to server JAR.
+            asset_mgr: AssetManager instance.
+            seed: World seed.
+            mc_version: Minecraft version.
+            log_fn: Log callback.
+        """
         self.server_dir = server_dir
         self.java_bin = java_bin
         self.jar_path = jar_path
@@ -27,6 +40,13 @@ class MCLifecycle:
         self._mc_log_pos = 0
 
     def start_server(self, measure_ctx=None) -> bool:
+        """Launch the Minecraft server process.
+
+        Args:
+            measure_ctx: Optional monitoring context manager.
+
+        Returns: True if server started.
+        """
         from instance_runner import MCServer
 
         self.asset_mgr.write_server_properties(seed=self.seed)
@@ -45,6 +65,7 @@ class MCLifecycle:
         return True
 
     def start_log_stream(self) -> None:
+        """Start background thread to stream server logs via log callback."""
         self._mc_log_pos = 0
         mc_log_path = self.server_dir / "logs" / "latest.log"
         if mc_log_path.exists():
@@ -72,9 +93,20 @@ class MCLifecycle:
         t.start()
 
     def wait_until_ready(self, timeout: float = 300) -> bool:
+        """Wait until server reports ready.
+
+        Args:
+            timeout: Max seconds to wait.
+
+        Returns: True if ready within timeout.
+        """
         return self.server.wait_until_ready(timeout=timeout)
 
     def restart_for_rcon(self) -> bool:
+        """Restart server with RCON enabled and wait for ready.
+
+        Returns: True if server restarted successfully.
+        """
         mc_log_path = self.server_dir / "logs" / "latest.log"
         self._mc_log_stop.set()
         self.server.stop()
@@ -96,6 +128,10 @@ class MCLifecycle:
         return self.wait_until_ready(timeout=300)
 
     def check_rcon_enabled(self) -> bool:
+        """Check if RCON is enabled in server.properties.
+
+        Returns: True if enable-rcon=true.
+        """
         rcon_props_path = self.server_dir / "server.properties"
         if rcon_props_path.exists():
             with open(rcon_props_path) as f:
@@ -103,6 +139,15 @@ class MCLifecycle:
         return False
 
     def connect_rcon(self, rcon_password: str, retries: int = 15, delay: float = 2.0) -> bool:
+        """Connect to server RCON with retries.
+
+        Args:
+            rcon_password: RCON password.
+            retries: Number of connection attempts.
+            delay: Seconds between attempts.
+
+        Returns: True if connected.
+        """
         self.rcon = RCONConnection(host="127.0.0.1", port=25575, password=rcon_password)
         if not self.rcon.connect(retries=retries, delay=delay):
             return False
@@ -111,6 +156,7 @@ class MCLifecycle:
         return True
 
     def stop(self):
+        """Stop server, disconnect RCON, and halt log streaming."""
         if self.rcon:
             self.rcon.disconnect()
         self._mc_log_stop.set()
@@ -119,6 +165,8 @@ class MCLifecycle:
 
 
 class _NullContext:
+    """No-op context manager for optional monitoring."""
+
     def __enter__(self):
         return self
 

@@ -36,6 +36,7 @@ HEARTBEAT_INTERVAL = 15
 
 
 def main(bg: bool = False, compile_mcmap: bool = False):
+    """Entry point for ChunkDMesh client. Connects to server, provisions MC, runs work loop."""
     from mc_lifecycle import MCLifecycle
     from provisioner import Provisioner
     from utils import ResourceReportFormat, get_available_resources_averaged
@@ -248,6 +249,14 @@ def main(bg: bool = False, compile_mcmap: bool = False):
 
 
 def _wait_for_server(url: str, max_wait: float = 120.0) -> bool:
+    """Poll server health endpoint until ready or timeout.
+
+    Args:
+        url: Server base URL.
+        max_wait: Maximum seconds to wait.
+
+    Returns: True if server responded within timeout.
+    """
     import httpx
 
     delay = 0.5

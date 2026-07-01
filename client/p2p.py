@@ -25,6 +25,17 @@ def create_torrent(
     trackers: list[str] | None = None,
     piece_size: int = 256 * 1024,
 ) -> Path:
+    """Create a .torrent file for P2P distribution.
+
+    Args:
+        file_path: Path to file to torrent.
+        trackers: List of tracker announce URLs.
+        piece_size: Piece size in bytes.
+
+    Returns: Path to created .torrent file.
+
+    Raises: RuntimeError if libtorrent not installed.
+    """
     if trackers is None:
         trackers = ["udp://tracker.opentrackr.org:1337/announce"]
 
@@ -57,6 +68,8 @@ def create_torrent(
 
 
 class TorrentSeeder:
+    """Manages libtorrent session for seeding and downloading torrents."""
+
     def __init__(self, save_path: Path | None = None):
         try:
             import libtorrent as lt
@@ -82,6 +95,13 @@ class TorrentSeeder:
         self._handles: dict[str, lt.torrent_handle] = {}
 
     def add_torrent(self, torrent_path: Path) -> str:
+        """Add a .torrent file to the session for downloading.
+
+        Args:
+            torrent_path: Path to .torrent file.
+
+        Returns: Torrent name.
+        """
         info = self._lt.torrent_info(str(torrent_path))
         params = {
             "save_path": self._save_path,
@@ -95,6 +115,13 @@ class TorrentSeeder:
         return name
 
     def add_magnet(self, magnet_uri: str) -> str:
+        """Add a magnet URI to the session.
+
+        Args:
+            magnet_uri: Magnet link string.
+
+        Returns: Torrent name.
+        """
         params = {
             "save_path": self._save_path,
             "url": magnet_uri,
@@ -107,6 +134,13 @@ class TorrentSeeder:
         return name
 
     def get_status(self, name: str) -> dict:
+        """Get download status for a named torrent.
+
+        Args:
+            name: Torrent name.
+
+        Returns: Dict with progress, rates, peers, seeds, state.
+        """
         handle = self._handles.get(name)
         if not handle:
             return {"error": "torrent not found"}
@@ -123,12 +157,27 @@ class TorrentSeeder:
         }
 
     def is_complete(self, name: str) -> bool:
+        """Check if torrent download is complete and seeding.
+
+        Args:
+            name: Torrent name.
+
+        Returns: True if seeding.
+        """
         handle = self._handles.get(name)
         if not handle:
             return False
         return handle.status().is_seeding
 
     def wait_for_completion(self, name: str, timeout: float = 600) -> bool:
+        """Block until torrent download finishes.
+
+        Args:
+            name: Torrent name.
+            timeout: Max seconds to wait.
+
+        Returns: True if completed within timeout.
+        """
         import time
 
         start = time.time()
@@ -139,15 +188,22 @@ class TorrentSeeder:
         return False
 
     def remove_torrent(self, name: str):
+        """Remove a torrent from the session.
+
+        Args:
+            name: Torrent name to remove.
+        """
         handle = self._handles.pop(name, None)
         if handle:
             self._ses.remove_torrent(handle)
             logger.info("Removed torrent: %s", name)
 
     def get_all_torrents(self) -> list[dict]:
+        """Return status for all tracked torrents."""
         return [self.get_status(name) for name in self._handles]
 
     def shutdown(self):
+        """Remove all torrents and shut down the P2P session."""
         for name in list(self._handles.keys()):
             self.remove_torrent(name)
         logger.info("P2P seeder shut down")

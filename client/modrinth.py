@@ -10,6 +10,16 @@ atexit.register(_http_client.close)
 
 
 def get_modrinth_download(project_id: str, version: str, loader: str, minecraft_version: str) -> dict | None:
+    """Fetch download info for a Modrinth project matching version/loader/MC.
+
+    Args:
+        project_id: Modrinth project ID.
+        version: Specific version string (or empty for latest).
+        loader: Mod loader name (fabric, forge, etc.).
+        minecraft_version: Minecraft version string.
+
+    Returns: Dict with url, filename, size, or None if not found.
+    """
     url = f"https://api.modrinth.com/v2/project/{project_id}/version"
     params = {}
     if loader:

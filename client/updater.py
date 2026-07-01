@@ -16,12 +16,24 @@ CLIENT_VERSION = "0.1.0"
 
 
 def get_current_version() -> str:
+    """Read current client version from .version file or fallback constant.
+
+    Returns: Version string.
+    """
     if VERSION_FILE.exists():
         return VERSION_FILE.read_text().strip()
     return CLIENT_VERSION
 
 
 def check_update(server_url: str, token: str) -> dict | None:
+    """Check server for a newer client version.
+
+    Args:
+        server_url: Server base URL.
+        token: Auth token.
+
+    Returns: Version info dict, or None on failure.
+    """
     headers = {"Authorization": f"Bearer {token}"}
     try:
         with httpx.Client(follow_redirects=True, timeout=10) as client:
@@ -37,6 +49,15 @@ def check_update(server_url: str, token: str) -> dict | None:
 
 
 def download_update(server_url: str, token: str, version: str) -> Path:
+    """Download client update archive from server.
+
+    Args:
+        server_url: Server base URL.
+        token: Auth token.
+        version: Version string for filename.
+
+    Returns: Path to downloaded archive.
+    """
     headers = {"Authorization": f"Bearer {token}"}
     UPDATE_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -56,6 +77,15 @@ def download_update(server_url: str, token: str, version: str) -> Path:
 
 
 def apply_update(archive_path: Path):
+    """Extract update archive and replace current client files.
+
+    Creates backup before applying, rolls back on failure.
+
+    Args:
+        archive_path: Path to update tar.gz archive.
+
+    Raises: tarfile.ExtractError on path traversal; re-raises on failure after rollback.
+    """
     import tarfile
 
     client_dir = Path(__file__).resolve().parent
@@ -90,6 +120,14 @@ def apply_update(archive_path: Path):
 
 
 def check_and_update(server_url: str, token: str) -> bool:
+    """Full update flow: check, download, apply.
+
+    Args:
+        server_url: Server base URL.
+        token: Auth token.
+
+    Returns: True if update was applied.
+    """
     current = get_current_version()
     print(f"Current client version: {current}")
 

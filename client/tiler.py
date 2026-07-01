@@ -14,6 +14,14 @@ class ClientTiler:
     """Runs mcmap locally to generate PNG tiles from .mca files."""
 
     def __init__(self, mcmap_bin: Path, palette_path: Path, biome_colors_path: Path, biome_tints_path: Path):
+        """Initialize ClientTiler with mcmap binary and palette paths.
+
+        Args:
+            mcmap_bin: Path to mcmap executable.
+            palette_path: Path to block_colors.json.
+            biome_colors_path: Path to biome_colors.json.
+            biome_tints_path: Path to biome_tint_blocks.json.
+        """
         self.mcmap_bin = mcmap_bin
         self.palette_path = palette_path
         self.biome_colors_path = biome_colors_path
@@ -73,7 +81,16 @@ class ClientTiler:
         return tiles
 
     def render_single(self, region_mca: Path, chunk_x: int, chunk_z: int, output_dir: Path) -> Path | None:
-        """Render a single chunk."""
+        """Render a single chunk to PNG.
+
+        Args:
+            region_mca: Path to .mca file.
+            chunk_x: Chunk X coordinate.
+            chunk_z: Chunk Z coordinate.
+            output_dir: Output directory for PNG.
+
+        Returns: Path to generated PNG, or None on failure.
+        """
         output_dir.mkdir(parents=True, exist_ok=True)
 
         cmd = [str(self.mcmap_bin)]

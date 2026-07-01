@@ -26,6 +26,8 @@ JAVA_INSTALL_DIR = Path.home() / ".chunkdmesh" / "java"
 
 
 def _get_os_name() -> str:
+    """Get normalized OS name for Adoptium API."""
+
     system = platform.system().lower()
     os_names = {
         "linux": "linux",
@@ -38,6 +40,7 @@ def _get_os_name() -> str:
 
 
 def _get_arch() -> str:
+    """Get normalized CPU architecture for Adoptium API."""
     machine = platform.machine().lower()
     if machine in ("x86_64", "amd64"):
         return "x64"
@@ -47,6 +50,13 @@ def _get_arch() -> str:
 
 
 def _parse_java_version(version_output: str) -> int | None:
+    """Extract major Java version from version string.
+
+    Args:
+        version_output: Output from java -version.
+
+    Returns: Major version number, or None.
+    """
     match = re.search(r'"(\d+)(?:\.\d+)*', version_output)
     if match:
         major = int(match.group(1))
@@ -57,6 +67,13 @@ def _parse_java_version(version_output: str) -> int | None:
 
 
 def _find_java_in_dir(base: Path) -> Path | None:
+    """Check if java binary exists under a directory.
+
+    Args:
+        base: Base directory to check.
+
+    Returns: Path to java binary, or None.
+    """
     java_bin = base / "bin" / "java"
     if sys.platform == "win32":
         java_bin = base / "bin" / "java.exe"
@@ -66,6 +83,7 @@ def _find_java_in_dir(base: Path) -> Path | None:
 
 
 def _search_java_in_path() -> Path | None:
+    """Search for java in system PATH."""
     java_path = shutil.which("java")
     if java_path:
         return Path(java_path)
@@ -73,6 +91,7 @@ def _search_java_in_path() -> Path | None:
 
 
 def _search_java_home() -> Path | None:
+    """Search for java using JAVA_HOME environment variable."""
     java_home = os.environ.get("JAVA_HOME")
     if java_home:
         found = _find_java_in_dir(Path(java_home))
@@ -82,6 +101,7 @@ def _search_java_home() -> Path | None:
 
 
 def _search_common_locations() -> list[Path]:
+    """Search for java in standard OS-specific directories."""
     locations = []
     system = platform.system()
 
@@ -124,6 +144,10 @@ def _search_common_locations() -> list[Path]:
 
 
 def find_java() -> Path | None:
+    """Locate a Java installation on the system.
+
+    Returns: Path to Java home directory, or None.
+    """
     candidates = []
 
     path_java = _search_java_in_path()
@@ -155,6 +179,13 @@ def find_java() -> Path | None:
 
 
 def get_java_version(java_path: Path) -> int | None:
+    """Get major Java version for a given Java home.
+
+    Args:
+        java_path: Path to Java home directory.
+
+    Returns: Major version number, or None.
+    """
     java_bin = java_path / "bin" / "java"
     if sys.platform == "win32":
         java_bin = java_path / "bin" / "java.exe"
@@ -173,11 +204,26 @@ def get_java_version(java_path: Path) -> int | None:
 
 
 def required_java_version(mc_version: str) -> int:
+    """Determine minimum required Java version for MC version.
+
+    Args:
+        mc_version: Minecraft version string.
+
+    Returns: Required Java major version.
+    """
     mc_major_minor = ".".join(mc_version.split(".")[:2])
     return JAVA_MIN_VERSIONS.get(mc_major_minor, 17)
 
 
 def is_java_compatible(java_path: Path, mc_version: str) -> bool:
+    """Check if Java version meets MC version requirement.
+
+    Args:
+        java_path: Path to Java home.
+        mc_version: Minecraft version.
+
+    Returns: True if compatible.
+    """
     version = get_java_version(java_path)
     if version is None:
         return False
@@ -186,6 +232,15 @@ def is_java_compatible(java_path: Path, mc_version: str) -> bool:
 
 
 def _fetch_download_url(mc_version: str) -> str:
+    """Get Adoptium download URL for required Java version.
+
+    Args:
+        mc_version: Minecraft version.
+
+    Returns: Download URL string.
+
+    Raises: RuntimeError if no assets or download URL found.
+    """
     os_name = _get_os_name()
     arch = _get_arch()
     java_version = required_java_version(mc_version)
@@ -206,6 +261,14 @@ def _fetch_download_url(mc_version: str) -> str:
 
 
 def download_java(mc_version: str, dest: Path) -> Path:
+    """Download and extract OpenJDK for required MC version.
+
+    Args:
+        mc_version: Minecraft version.
+        dest: Destination directory.
+
+    Returns: Path to extracted Java home.
+    """
     dest.mkdir(parents=True, exist_ok=True)
     url = _fetch_download_url(mc_version)
     filename = url.split("/")[-1]
@@ -250,6 +313,15 @@ def download_java(mc_version: str, dest: Path) -> Path:
 
 
 def ensure_java(mc_version: str) -> Path:
+    """Ensure compatible Java is available, downloading if needed.
+
+    Args:
+        mc_version: Minecraft version.
+
+    Returns: Path to compatible Java home.
+
+    Raises: RuntimeError if downloaded Java is incompatible.
+    """
     existing = find_java()
     if existing and is_java_compatible(existing, mc_version):
         print(f"Using existing Java: {existing}")

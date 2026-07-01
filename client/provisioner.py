@@ -12,7 +12,17 @@ import httpx
 
 
 class Provisioner:
+    """Handles server provisioning: config, Java, mods, loader, mcmap setup."""
+
     def __init__(self, server_url: str, token: str, log_fn, measure_ctx=None):
+        """Initialize Provisioner with server connection details.
+
+        Args:
+            server_url: Server base URL.
+            token: Auth token.
+            log_fn: Log callback.
+            measure_ctx: Optional monitoring context manager.
+        """
         self.server_url = server_url
         self.token = token
         self.auth_headers = {"Authorization": f"Bearer {token}"}
@@ -20,6 +30,10 @@ class Provisioner:
         self._measure = measure_ctx
 
     def fetch_config(self) -> dict | None:
+        """Fetch and parse server configuration.
+
+        Returns: Config dict with MC version, loader, seed, shape, etc., or None on failure.
+        """
         resp = self._get("/assets/config.json")
         if resp.status_code != 200:
             self.log("❌", f"Config fetch failed: {resp.status_code} - {resp.text}")
@@ -37,6 +51,13 @@ class Provisioner:
         return config
 
     def setup_java(self, mc_version: str):
+        """Ensure compatible Java is available for given MC version.
+
+        Args:
+            mc_version: Minecraft version string.
+
+        Returns: Path to java binary.
+        """
         from java_utils import ensure_java
 
         java_home = ensure_java(mc_version)
@@ -45,11 +66,31 @@ class Provisioner:
         return java_bin
 
     def setup_server(self, asset_mgr, mc_version: str, loader: str, loader_version: str) -> Path:
+        """Set up server directory structure.
+
+        Args:
+            asset_mgr: AssetManager instance.
+            mc_version: Minecraft version.
+            loader: Mod loader name.
+            loader_version: Loader version.
+
+        Returns: Path to server directory.
+        """
         server_dir = asset_mgr.setup_server_dir(mc_version, loader, loader_version)
         self.log("📁", f"Server dir: {server_dir}")
         return server_dir
 
     def download_mods(self, asset_mgr, config: dict, mc_version: str, loader: str):
+        """Download mods from server zip or Modrinth.
+
+        Args:
+            asset_mgr: AssetManager instance.
+            config: Server config dict.
+            mc_version: Minecraft version.
+            loader: Mod loader name.
+
+        Returns: True if mods were downloaded successfully.
+        """
         if config.get("has_mods_zip"):
             mods_zip = asset_mgr.download_mods()
             self.log("📥", f"Mods downloaded: {mods_zip}")
@@ -75,6 +116,16 @@ class Provisioner:
         return True
 
     def install_loader(self, asset_mgr, mc_version: str, loader: str, loader_version: str) -> Path | None:
+        """Install mod loader and return path to server JAR.
+
+        Args:
+            asset_mgr: AssetManager instance.
+            mc_version: Minecraft version.
+            loader: Mod loader name.
+            loader_version: Loader version.
+
+        Returns: Path to installed server JAR, or None on failure.
+        """
         jar_path = asset_mgr.get_server_jar(mc_version, loader, loader_version)
         self.log("🔧", f"Server jar: {jar_path}")
         return jar_path
@@ -254,5 +305,12 @@ class Provisioner:
         return dest
 
     def _get(self, path: str) -> httpx.Response:
+        """Send authenticated GET request to server.
+
+        Args:
+            path: URL path relative to server base.
+
+        Returns: httpx Response.
+        """
         with httpx.Client(follow_redirects=True, timeout=30) as client:
             return client.get(f"{self.server_url}{path}", headers=self.auth_headers)

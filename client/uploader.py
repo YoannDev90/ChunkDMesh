@@ -10,15 +10,31 @@ _BATCH_SIZE = 50
 
 
 class RegionUploader:
+    """Handles .mca file upload, hashing, and tile upload to server."""
+
     def __init__(self, server_url: str, token: str):
         self.server_url = server_url.rstrip("/")
         self.token = token
         self.headers = {"Authorization": f"Bearer {token}"}
 
     def collect_mca_files(self, region_dir: Path) -> list[Path]:
+        """List .mca files in region directory.
+
+        Args:
+            region_dir: Path to region directory.
+
+        Returns: Sorted list of .mca file paths.
+        """
         return sorted(region_dir.glob("*.mca"))
 
     def compute_hashes(self, mca_files: list[Path]) -> dict[str, str]:
+        """Compute SHA-256 hashes for .mca files.
+
+        Args:
+            mca_files: List of .mca file paths.
+
+        Returns: Dict mapping filename to hex digest.
+        """
         hashes = {}
         for f in mca_files:
             sha256 = hashlib.sha256()
@@ -29,9 +45,25 @@ class RegionUploader:
         return hashes
 
     def compress_zstd(self, data: bytes, level: int = 3) -> bytes:
+        """Compress data using Zstandard.
+
+        Args:
+            data: Raw bytes to compress.
+            level: Compression level.
+
+        Returns: Compressed bytes.
+        """
         return zstd.compress(data, level)
 
     def upload_file(self, batch_id: int, mca_path: Path) -> dict:
+        """Upload compressed .mca file to server.
+
+        Args:
+            batch_id: Batch ID.
+            mca_path: Path to .mca file.
+
+        Returns: Server response dict.
+        """
         raw = mca_path.read_bytes()
         compressed = self.compress_zstd(raw)
 
@@ -49,6 +81,14 @@ class RegionUploader:
             return resp.json()
 
     def submit_hashes(self, batch_id: int, chunk_hashes: dict[str, str]) -> dict:
+        """Submit file hashes to server for batch completion.
+
+        Args:
+            batch_id: Batch ID.
+            chunk_hashes: Dict mapping filename to SHA-256 hash.
+
+        Returns: Server response dict.
+        """
         with httpx.Client(follow_redirects=True, timeout=30) as client:
             resp = client.post(
                 f"{self.server_url}/tasks/submit",
@@ -140,6 +180,17 @@ class RegionUploader:
         region_dir: Path,
         region_coords: list[tuple[int, int]],
     ) -> dict:
+        """Upload all .mca files in region and submit hashes.
+
+        Args:
+            batch_id: Batch ID.
+            region_dir: Region directory path.
+            region_coords: List of (rx, rz) region coordinates.
+
+        Returns: Dict with upload results.
+
+        Raises: FileNotFoundError if no .mca files found.
+        """
         mca_files = self.collect_mca_files(region_dir)
 
         if not mca_files:

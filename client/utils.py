@@ -8,6 +8,8 @@ PROC = Path("/proc")
 
 
 class ResourceReportFormat:
+    """Output format options for resource reporting."""
+
     DETAILED = "detailed"
     VALUE = "value"
 
