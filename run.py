@@ -35,6 +35,13 @@ def run_server_thread(host="0.0.0.0", port=8000, world_config=None):
     def _server_loop():
         os.chdir(SERVER_DIR)
         sys.path.insert(0, SERVER_DIR)
+
+        # Redirect stdout/stderr so server logs don't corrupt the TUI
+        log_path = os.path.join(ROOT, "server.log")
+        log_fd = open(log_path, "a")  # noqa: SIM115 — kept open for thread lifetime
+        sys.stdout = log_fd
+        sys.stderr = log_fd
+
         from main import main
 
         asyncio.run(main())
@@ -59,18 +66,19 @@ def run_client(host=None, port=None, bg=False):
 
 def run_client_thread(both_tui=None):
     """Run client main() in a thread, reporting errors to BothTUI."""
+    # Redirect stdout/stderr so client prints don't corrupt the TUI
+    log_path = os.path.join(ROOT, "client.log")
+    log_fd = open(log_path, "a")  # noqa: SIM115 — kept open for thread lifetime
+    sys.stdout = log_fd
+    sys.stderr = log_fd
     try:
         _spec = importlib.util.spec_from_file_location("client_main", os.path.join(CLIENT_DIR, "main.py"))
         _mod = importlib.util.module_from_spec(_spec)
         _spec.loader.exec_module(_mod)
         _mod.main(bg=True)
     except Exception as exc:
-        import traceback
-
-        msg = f"{exc}\n{traceback.format_exc()[-300:]}"
         if both_tui:
             both_tui.set_client_error(str(exc))
-        print(f"\n  [CLIENT ERROR] {msg}", file=sys.stderr)
     finally:
         if both_tui:
             both_tui.set_client_done()
@@ -78,6 +86,9 @@ def run_client_thread(both_tui=None):
 
 def run_both(host="0.0.0.0", port=8000, world_config=None):
     """Start server in background thread + client with unified TUI."""
+    # Save original stdout BEFORE any redirection — TUI needs real terminal
+    original_stdout = sys.__stdout__
+
     connect_host = host if host != "0.0.0.0" else "127.0.0.1"
     os.environ["CHUNKMESH_SERVER_URL"] = f"http://{connect_host}:{port}"
 
@@ -112,7 +123,7 @@ def run_both(host="0.0.0.0", port=8000, world_config=None):
 
     # Use the existing module-level instance — same one client main() imports
     client_tui = ct_mod.tui
-    both_tui = BothTUI(client_tui)
+    both_tui = BothTUI(client_tui, console_file=original_stdout)
 
     # Start client in a daemon thread — errors reported to BothTUI
     client_thread = threading.Thread(target=run_client_thread, args=(both_tui,), daemon=True)

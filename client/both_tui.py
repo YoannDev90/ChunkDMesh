@@ -6,31 +6,16 @@ import traceback
 
 from client_tui import ClientTUI
 from monitor import monitor, sample_system
-from rich.console import Group
+from rich.console import Console, Group
 from rich.layout import Layout
 from rich.live import Live
 from rich.panel import Panel
+from rich.progress import BarColumn, Progress, TextColumn, TimeElapsedColumn
 from rich.table import Table
 from rich.text import Text
 
 
-def _bar(pct: float, width: int = 20, filled: str = "█", empty: str = "░") -> str:
-    """Render a simple ASCII bar chart."""
-    filled_n = int(pct / 100 * width)
-    return filled * filled_n + empty * (width - filled_n)
-
-
-def _color_pct(val: float, thresholds: tuple[float, float] = (50.0, 80.0)) -> str:
-    """Return colored percentage string."""
-    if val < thresholds[0]:
-        return f"[green]{val:.0f}%[/green]"
-    if val < thresholds[1]:
-        return f"[yellow]{val:.0f}%[/yellow]"
-    return f"[red]{val:.0f}%[/red]"
-
-
 def _status_dot(status: str) -> Text:
-    """Colored status indicator."""
     t = Text()
     if status in ("done", "ready", "connected"):
         t.append("● ", style="bold green")
@@ -50,11 +35,18 @@ def _status_dot(status: str) -> Text:
 class BothTUI:
     """Single TUI combining server stats and client progress."""
 
-    def __init__(self, client_tui: ClientTUI):
+    def __init__(self, client_tui: ClientTUI, console_file=None):
         self.client_tui = client_tui
         self._running = False
         self._client_error: str | None = None
         self._client_done = False
+        self._console = Console(file=console_file) if console_file else Console()
+        self._progress = Progress(
+            BarColumn(),
+            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+            TimeElapsedColumn(),
+        )
+        self._progress_task = self._progress.add_task("Idle", total=100)
 
     def set_client_error(self, error: str):
         self._client_error = error
@@ -66,7 +58,7 @@ class BothTUI:
         self._running = True
         layout = self._build_layout()
         try:
-            with Live(layout, refresh_per_second=4, screen=True):
+            with Live(layout, refresh_per_second=4, screen=True, console=self._console):
                 while self._running:
                     self._safe_update(layout, "header", self._render_header)
                     self._safe_update(layout, "body", self._render_client, "left", "client_panel")
@@ -95,13 +87,7 @@ class BothTUI:
                 node = layout
                 for key in path_and_fn[2:]:
                     node = node[key]
-                node.update(
-                    Panel(
-                        Text(f"{exc}\n{tb[-200:]}", style="red"),
-                        title="Error",
-                        border_style="red",
-                    )
-                )
+                node.update(Panel(Text(f"{exc}\n{tb[-200:]}", style="red"), title="Error", border_style="red"))
             except Exception:
                 pass
 
@@ -165,13 +151,9 @@ class BothTUI:
         if score:
             right.append(f" {score:.1f}", style="yellow")
 
-        return Panel(
-            Group(left, center, right),
-            style="dim on grey11",
-            border_style="bright_cyan",
-        )
+        return Panel(Group(left, center, right), style="dim on grey11", border_style="bright_cyan")
 
-    # ── Client panel (status + progress in one) ───────────────
+    # ── Client panel (status + progress) ──────────────────────
 
     def _render_client(self) -> Panel:
         ct = self.client_tui
@@ -182,7 +164,7 @@ class BothTUI:
             batch = ct._batch_count
             progress = ct._current_progress
 
-        # Status table
+        # Status
         status_table = Table.grid(padding=(0, 1), expand=True)
         status_table.add_column(width=8, style="bold")
         status_table.add_column()
@@ -193,7 +175,7 @@ class BothTUI:
             status_table.add_row("Region", Text(region, style="cyan"))
         status_table.add_row("Batches", Text(str(batch), style="bold"))
 
-        # Progress parsing
+        # Progress bar
         pct = 0.0
         progress_text = ""
         if progress:
@@ -208,24 +190,18 @@ class BothTUI:
                     pct = done / total * 100
                     progress_text = f"{done:,} / {total:,}"
 
-        pct_color = "green" if pct >= 80 else "yellow" if pct >= 30 else "cyan"
-        bar = _bar(pct, width=30)
+        label = "Chunky" if progress else "Idle"
+        self._progress.update(self._progress_task, completed=pct, description=label)
 
         progress_table = Table.grid(padding=(0, 1), expand=True)
         progress_table.add_column(width=8, style="bold")
         progress_table.add_column()
-        progress_table.add_row(
-            "Progress",
-            Text(f"[{pct_color}]{bar}[/] {pct:.1f}%", style="bold"),
-        )
+        progress_table.add_row("Progress", self._progress)
         if progress_text:
             progress_table.add_row("Chunks", Text(progress_text, style="dim"))
-        if progress and not progress_text:
-            progress_table.add_row("Info", Text(progress[:60], style="dim"))
 
         content = Group(status_table, Text(), progress_table)
-        title = Text(" CLIENT ", style="bold white on blue")
-        return Panel(content, title=title, border_style="blue", expand=True)
+        return Panel(content, title=" CLIENT ", border_style="blue", expand=True)
 
     # ── Steps panel ───────────────────────────────────────────
 
@@ -238,13 +214,7 @@ class BothTUI:
                 border_style="dim",
             )
 
-        table = Table(
-            show_header=True,
-            header_style="bold cyan",
-            box=None,
-            padding=(0, 1),
-            expand=True,
-        )
+        table = Table(show_header=True, header_style="bold cyan", box=None, padding=(0, 1), expand=True)
         table.add_column("Step", style="white", ratio=3)
         table.add_column("Wall", justify="right", ratio=1)
         table.add_column("CPU", justify="right", ratio=1)
@@ -261,7 +231,6 @@ class BothTUI:
             wall_style = "red" if wall_s > 5 else "yellow" if wall_s > 1 else "green"
             cpu_style = "red" if cpu_s > 3 else "yellow" if cpu_s > 0.5 else "green"
             rss_style = "red" if abs(rss) > 50_000 else "yellow" if abs(rss) > 10_000 else "dim"
-
             rss_str = f"{rss // 1024:+d}M" if abs(rss) > 1024 else f"{rss:+d}K"
 
             table.add_row(
@@ -286,71 +255,42 @@ class BothTUI:
             1,
         )
 
-        def _row(label: str, count: int, color: str) -> Table:
-            t = Table.grid(padding=(0, 1), expand=True)
-            t.add_column(width=10, style="bold")
-            t.add_column()
+        def _row(label: str, count: int, color: str) -> Text:
             pct = count / total * 100
-            t.add_row(
-                label,
-                Text(f"{_bar(pct, 15)} {count}", style=color),
-            )
-            return t
+            filled = int(pct / 100 * 15)
+            bar = "█" * filled + "░" * (15 - filled)
+            return Text(f"  {bar}  {count:>4}", style=color)
 
         rows = Group(
-            _row("Pending", stats.pending_tasks, "cyan"),
-            _row("Assigned", stats.assigned_tasks, "yellow"),
-            _row("Working", stats.working_tasks, "green"),
-            _row("Completed", stats.completed_tasks, "bright_green"),
-            _row("Validated", stats.validated_tasks, "bold green"),
+            _make_row("Pending", stats.pending_tasks, "cyan"),
+            _make_row("Assigned", stats.assigned_tasks, "yellow"),
+            _make_row("Working", stats.working_tasks, "green"),
+            _make_row("Completed", stats.completed_tasks, "bright_green"),
+            _make_row("Validated", stats.validated_tasks, "bold green"),
         )
 
-        storage = Text()
-        storage.append(f"\n 💾 {stats.total_storage_mb:.1f} MB", style="dim")
-        storage.append(f"  |  👥 {stats.active_clients} clients", style="dim")
+        storage = Text(f"\n  💾 {stats.total_storage_mb:.1f} MB  │  👥 {stats.active_clients} clients", style="dim")
 
-        content = Group(rows, storage)
-        return Panel(content, title=" SERVER ", border_style="blue")
+        return Panel(Group(rows, storage), title=" SERVER ", border_style="blue")
 
     # ── Server requests panel ─────────────────────────────────
 
     def _render_server_requests(self) -> Panel:
         recent = self._srv_recent()
         if not recent:
-            return Panel(
-                Text("  No requests yet", style="dim italic"),
-                title=" REQUESTS ",
-                border_style="dim",
-            )
+            return Panel(Text("  No requests yet", style="dim italic"), title=" REQUESTS ", border_style="dim")
 
-        table = Table(
-            show_header=True,
-            header_style="bold magenta",
-            box=None,
-            padding=(0, 1),
-            expand=True,
-        )
+        table = Table(show_header=True, header_style="bold magenta", box=None, padding=(0, 1), expand=True)
         table.add_column("Time", width=8, style="dim")
         table.add_column("Path", style="cyan", ratio=3)
         table.add_column("Status", justify="right", ratio=1)
 
         for ts, path, status in recent[-14:]:
             t_str = time.strftime("%H:%M:%S", time.localtime(ts))
-            if status < 300:
-                s_style = "green"
-            elif status < 400:
-                s_style = "yellow"
-            elif status < 500:
-                s_style = "red"
-            else:
-                s_style = "bold red"
+            s_style = "green" if status < 300 else "yellow" if status < 400 else "red" if status < 500 else "bold red"
             table.add_row(t_str, path[:50], Text(str(status), style=s_style))
 
-        return Panel(
-            table,
-            title=f" REQUESTS [{len(recent)}] ",
-            border_style="magenta",
-        )
+        return Panel(table, title=f" REQUESTS [{len(recent)}] ", border_style="magenta")
 
     # ── System panel ──────────────────────────────────────────
 
@@ -361,17 +301,15 @@ class BothTUI:
         table.add_column(width=12, style="bold")
         table.add_column()
 
-        # CPU with bar
-        cpu1_color = "green" if sys.cpu_load_1 < 2 else "yellow" if sys.cpu_load_1 < 4 else "red"
-        cpu_bar = _bar(min(sys.cpu_load_1 / 8.0, 1.0) * 100, width=15)
+        cpu_color = "green" if sys.cpu_load_1 < 2 else "yellow" if sys.cpu_load_1 < 4 else "red"
         table.add_row(
             "CPU 1/5/15",
-            Text(f"{cpu_bar} {sys.cpu_load_1:.1f} {sys.cpu_load_5:.1f} {sys.cpu_load_15:.1f}", style=cpu1_color),
+            Text(f"{sys.cpu_load_1:.1f}  {sys.cpu_load_5:.1f}  {sys.cpu_load_15:.1f}", style=cpu_color),
         )
 
-        # Memory with bar
         mem_color = "green" if sys.mem_used_pct < 60 else "yellow" if sys.mem_used_pct < 85 else "red"
-        mem_bar = _bar(sys.mem_used_pct, width=15)
+        filled = int(sys.mem_used_pct / 100 * 20)
+        mem_bar = "█" * filled + "░" * (20 - filled)
         table.add_row(
             "Memory",
             Text(
@@ -415,3 +353,12 @@ class BothTUI:
         from state import server_state
 
         return server_state.recent_requests()
+
+
+def _make_row(label: str, count: int, color: str) -> Table:
+    """Helper to build a server task row with bar."""
+    t = Table.grid(padding=(0, 1), expand=True)
+    t.add_column(width=10, style="bold")
+    t.add_column()
+    t.add_row(label, Text(f"{count}", style=color))
+    return t
