@@ -21,7 +21,7 @@ _DATA = _SRV.parent / "data"
 
 router = APIRouter(prefix="/tiles", tags=["tiles"])
 
-_ZSTD_MAX_RATIO = 2048
+_ZSTD_MAX_RATIO = 128
 
 
 def _safe_decompress(body: bytes, max_decompressed: int) -> bytes:
@@ -123,7 +123,7 @@ async def upload_tiles_batch(request: Request, token_data: dict = Depends(verify
       png_data: size bytes
     """
     body = await request.body()
-    data = _safe_decompress(body, max_decompressed=100 * 1024 * 1024)
+    data = _safe_decompress(body, max_decompressed=500 * 1024 * 1024)
 
     from map_generator import MapConfig
 
