@@ -166,7 +166,10 @@ def _get_or_build_overview(cache_dir: Path) -> tuple[bytes, int, int, int, int, 
 
 
 def _extract_tile_from_overview(
-    zoom: int, tx: int, tz: int, cache_dir: Path,
+    zoom: int,
+    tx: int,
+    tz: int,
+    cache_dir: Path,
 ) -> bytes | None:
     """Extract a 256x256 tile for zoom < 5 from the overview image."""
     ov = _get_or_build_overview(cache_dir)
