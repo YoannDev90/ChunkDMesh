@@ -352,12 +352,12 @@ pub fn read_chunk(path: &Path, chunk_x: i32, chunk_z: i32) -> Result<ChunkRawDat
         c.read_u32::<BigEndian>().map_err(|e| ParserError::Nbt(e.to_string()))? as usize
     };
 
-    if file_offset + 5 + chunk_len > data.len() {
+    if file_offset + 4 + chunk_len > data.len() {
         return Err(ParserError::InvalidChunk("Chunk data truncated".into()));
     }
 
     let compression = data[file_offset + 4];
-    let nbt_data = &data[file_offset + 5..file_offset + 5 + chunk_len];
+    let nbt_data = &data[file_offset + 5..file_offset + 4 + chunk_len];
 
     let decompressed = match compression {
         1 => {
@@ -420,12 +420,12 @@ pub fn read_region_file(path: &Path) -> Result<Vec<ChunkRawData>, ParserError> {
             Err(_) => continue,
         };
 
-        if file_offset + 5 + chunk_len > data.len() {
+        if file_offset + 4 + chunk_len > data.len() {
             continue;
         }
 
         let compression = data[file_offset + 4];
-        let nbt_data = &data[file_offset + 5..file_offset + 5 + chunk_len];
+        let nbt_data = &data[file_offset + 5..file_offset + 4 + chunk_len];
 
         let decompressed = match compression {
             1 => {
