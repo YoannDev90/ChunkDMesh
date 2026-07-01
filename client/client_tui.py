@@ -225,23 +225,39 @@ class ClientTUI:
 
     def _start_key_reader(self):
         """Start background thread to read arrow keys for log scrolling."""
+        import os
+        import select
+        import sys
 
         def _reader():
+            if not sys.stdin.isatty():
+                return
             try:
-                import readchar
+                import termios
+                import tty
 
-                while self._running:
-                    key = readchar.readkey()
-                    with self._lock:
-                        max_off = max(0, len(self._log_buffer) - 15)
-                        if key == readchar.key.UP_ARROW:
-                            self._log_offset = min(self._log_offset + 1, max_off)
-                        elif key == readchar.key.DOWN_ARROW:
-                            self._log_offset = max(self._log_offset - 1, 0)
-                        elif key == readchar.key.HOME or key == readchar.key.PAGE_UP:
-                            self._log_offset = max_off
-                        elif key == readchar.key.END or key == readchar.key.PAGE_DOWN:
-                            self._log_offset = 0
+                fd = sys.stdin.fileno()
+                old = termios.tcgetattr(fd)
+                try:
+                    tty.setcbreak(fd)
+                    while self._running:
+                        if select.select([sys.stdin], [], [], 0.1)[0]:
+                            ch = os.read(fd, 1)
+                            if ch == b"\x1b":
+                                if select.select([sys.stdin], [], [], 0.05)[0]:
+                                    seq = os.read(fd, 2)
+                                    with self._lock:
+                                        max_off = max(0, len(self._log_buffer) - 15)
+                                        if seq == b"[A":
+                                            self._log_offset = min(self._log_offset + 1, max_off)
+                                        elif seq == b"[B":
+                                            self._log_offset = max(self._log_offset - 1, 0)
+                                        elif seq == b"[H":
+                                            self._log_offset = max_off
+                                        elif seq == b"[F":
+                                            self._log_offset = 0
+                finally:
+                    termios.tcsetattr(fd, termios.TCSADRAIN, old)
             except Exception:
                 pass
 
