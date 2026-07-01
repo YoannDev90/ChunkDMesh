@@ -15,7 +15,7 @@ from routes.auth import verify_token
 logger = logging.getLogger(__name__)
 
 _DATA = Path(__file__).resolve().parent.parent.parent / "data"
-_BIN = Path(__file__).resolve().parent.parent.parent / "bin" / "mcmap"
+_BIN = Path(__file__).resolve().parent.parent.parent / "bin"
 
 router = APIRouter(prefix="/assets", tags=["assets"])
 
