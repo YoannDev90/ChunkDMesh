@@ -31,11 +31,13 @@ templates = Jinja2Templates(directory=str(_SRV / "templates"))
 
 @router.get("/admin", response_class=HTMLResponse)
 async def dashboard(request: Request):
+    """Serve admin dashboard HTML."""
     return templates.TemplateResponse(request, "dashboard.html")
 
 
 @router.get("/admin/heatmap")
 async def get_heatmap(request: Request):
+    """Return region batch status data as JSON for heatmap."""
     async with get_db_session() as session:
         result = await session.execute(select(Batch.region_x, Batch.region_z, Batch.status, Batch.assigned_to))
         rows = result.all()
@@ -51,6 +53,7 @@ async def get_heatmap(request: Request):
 
 @router.get("/admin/heatmap/html")
 async def get_heatmap_partial(request: Request):
+    """Return HTML partial for heatmap grid."""
     async with get_db_session() as session:
         result = await session.execute(select(Batch.region_x, Batch.region_z, Batch.status))
         rows = result.all()
@@ -82,6 +85,7 @@ async def get_heatmap_partial(request: Request):
 
 @router.get("/admin/stats")
 async def admin_stats(request: Request):
+    """Return storage and batch statistics."""
     storage = ChunkStorage()
     regions = storage.list_regions()
 
@@ -119,6 +123,7 @@ async def admin_stats(request: Request):
 
 @router.get("/admin/progress")
 async def get_progress(request: Request):
+    """Return assembly progress and batch status counts."""
     config = Config()
     assembler = RegionAssembler(config.world_name)
     progress = assembler.get_progress()
@@ -136,6 +141,7 @@ async def get_progress(request: Request):
 
 @router.get("/admin/progress/html")
 async def get_progress_partial(request: Request):
+    """Return HTML partial for progress stats."""
     config = Config()
     assembler = RegionAssembler(config.world_name)
     progress = assembler.get_progress()
@@ -164,6 +170,7 @@ async def get_progress_partial(request: Request):
 
 @router.post("/admin/assemble")
 async def assemble_world(request: Request):
+    """Trigger region assembly from flat storage to export dir."""
     config = Config()
     assembler = RegionAssembler(config.world_name)
     result = await assembler.assemble()
@@ -172,6 +179,7 @@ async def assemble_world(request: Request):
 
 @router.post("/admin/export")
 async def export_world(request: Request, token_data: dict = Depends(verify_token)):
+    """Create .tar.gz archive of assembled world."""
     config = Config()
     manager = ExportManager(config.world_name)
     try:
@@ -189,6 +197,7 @@ async def export_world(request: Request, token_data: dict = Depends(verify_token
 
 @router.get("/admin/archives")
 async def list_archives(request: Request):
+    """List available export archives."""
     config = Config()
     manager = ExportManager(config.world_name)
     return JSONResponse({"archives": manager.list_archives()})
@@ -196,6 +205,7 @@ async def list_archives(request: Request):
 
 @router.post("/admin/torrent")
 async def create_mods_torrent(request: Request, token_data: dict = Depends(verify_token)):
+    """Create .torrent file for P2P mods.zip distribution."""
     zip_path = _DATA / "mods.zip"
     if not zip_path.exists():
         raise HTTPException(status_code=404, detail="mods.zip not found")
@@ -213,13 +223,17 @@ async def create_mods_torrent(request: Request, token_data: dict = Depends(verif
 
 @router.get("/admin/download/{filename}")
 async def download_archive(filename: str, request: Request, token_data: dict = Depends(verify_token)):
+    """Download an export archive with path traversal protection."""
     try:
         safe_name = sanitize_filename(filename)
     except ValueError as err:
         raise HTTPException(status_code=400, detail="Invalid filename") from err
     config = Config()
     manager = ExportManager(config.world_name)
-    archive_path = manager.exports_dir / safe_name
+    archive_path = (manager.exports_dir / safe_name).resolve()
+    exports_dir = manager.exports_dir.resolve()
+    if not str(archive_path).startswith(str(exports_dir)):
+        raise HTTPException(status_code=400, detail="Path traversal detected")
     if not archive_path.exists():
         raise HTTPException(status_code=404, detail="Archive not found")
     return FileResponse(archive_path, media_type="application/gzip", filename=safe_name)
@@ -227,6 +241,7 @@ async def download_archive(filename: str, request: Request, token_data: dict = D
 
 @router.get("/client/download")
 async def download_client(request: Request):
+    """Download client archive for distribution."""
     client_archive = ROOT / "client" / "chunkdmesh_client.tar.gz"
     if not client_archive.exists():
         raise HTTPException(status_code=404, detail="Client archive not found")

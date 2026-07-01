@@ -24,12 +24,15 @@ router = APIRouter(prefix="/tasks", tags=["tasks"])
 
 
 class SubmitTasksRequest(BaseModel):
+    """Hash submission payload for batch validation."""
+
     batch_id: int
     chunk_hashes: dict[str, str]
 
 
 @router.get("/batch")
 async def get_batch(request: Request, token_data: dict = Depends(verify_token)):
+    """Assign next available batch to requesting client."""
     client_id = token_data.get("client_id")
     if not client_id:
         raise HTTPException(status_code=400, detail="Invalid token payload")
@@ -51,12 +54,18 @@ async def submit_tasks(
     request: Request,
     token_data: dict = Depends(verify_token),
 ):
+    """Validate submitted chunk hashes against stored data."""
     batch_id = submit_tasks_request.batch_id
     chunk_hashes = submit_tasks_request.chunk_hashes
     results = {}
     storage = ChunkStorage()
 
-    for filename, declared_hash in chunk_hashes.items():
+    for raw_filename, declared_hash in chunk_hashes.items():
+        try:
+            filename = sanitize_filename(raw_filename)
+        except ValueError as err:
+            results[raw_filename] = {"status": "invalid", "error": str(err)}
+            continue
         cached_hash = None
         async with get_db_session() as session:
             v_result = await session.execute(
@@ -154,6 +163,7 @@ async def submit_tasks(
 
 @router.put("/upload/{batch_id}")
 async def upload_chunks(batch_id: int, request: Request, token_data: dict = Depends(verify_token)):
+    """Receive zstd-compressed .mca chunk data from client."""
     client_id = token_data.get("client_id")
     if not client_id:
         raise HTTPException(status_code=400, detail="Invalid token payload")

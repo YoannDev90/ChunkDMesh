@@ -65,7 +65,7 @@ async def upload_tile(request: Request, token_data: dict = Depends(verify_token)
 
     body = await request.body()
     try:
-        png_data = zstd.decompress(body)
+        png_data = zstd.decompress(body, max_output_size=10 * 1024 * 1024)
     except Exception:
         png_data = body  # Accept uncompressed
 
@@ -100,7 +100,7 @@ async def upload_tiles_batch(request: Request, token_data: dict = Depends(verify
     """
     body = await request.body()
     try:
-        data = zstd.decompress(body)
+        data = zstd.decompress(body, max_output_size=50 * 1024 * 1024)
     except Exception:
         data = body
 

@@ -30,6 +30,8 @@ class ChunkyPattern(enum.Enum):
 
 
 class ChunkyDimension(enum.Enum):
+    """Minecraft dimension types supported by Chunky."""
+
     OVERWORLD = "overworld"
     NETHER = "nether"
     END = "end"
@@ -37,6 +39,8 @@ class ChunkyDimension(enum.Enum):
 
 
 class SupportedLoaders(enum.Enum):
+    """Supported Minecraft mod loaders."""
+
     FABRIC = "fabric"
     FORGE = "forge"
     QUILT = "quilt"
@@ -47,6 +51,8 @@ _config_lock = threading.Lock()
 
 
 class Config:
+    """Singleton world configuration loaded from JSON5 file."""
+
     _instances: dict[str, "Config"] = {}
     _initialized: set[str] = set()
 
@@ -63,6 +69,7 @@ class Config:
             return instance
 
     def __init__(self, path: str | None = None):
+        """Initialize Config singleton, load and normalize values from JSON5."""
         if path is None:
             path = os.environ.get("CHUNKMESH_CONFIG_PATH") or str(
                 Path(__file__).resolve().parent.parent / "data" / "world_config.json5"
@@ -102,10 +109,12 @@ class Config:
         return str(value)
 
     def save_config(self) -> None:
+        """Write current config back to JSON5 file."""
         with open(self.path, "w") as f:
             json5.dump(self.to_dict(), f, indent=4)
 
     def _normalize_defaults(self) -> None:
+        """Normalize config values: center, seed, radius, dimension, shape, pattern."""
         if (
             isinstance(self.center[0], (int, float))
             and isinstance(self.center[1], (int, float))
@@ -144,9 +153,8 @@ class Config:
         ):
             self.max_clients = 100
 
-        self.save_config()
-
     async def validate(self) -> None:
+        """Validate config against remote Minecraft/Mojang/Modrinth APIs."""
         if self._validated:
             return
 
@@ -184,7 +192,6 @@ class Config:
                 f"{self.minecraft_loader} and Minecraft version {self.minecraft_version}"
             )
 
-        self.save_config()
         self._validated = True
 
     async def __aenter__(self):
@@ -192,6 +199,7 @@ class Config:
         return self
 
     def to_dict(self) -> dict:
+        """Serialize config to dict for API responses."""
         mods_zip_path = Path(__file__).resolve().parent.parent / "data" / "mods.zip"
         return {
             "minecraft_version": self.minecraft_version,
@@ -214,5 +222,6 @@ class Config:
 
 
 def load_config(path: str = "data/world_config.json5") -> dict:
+    """Load and parse a JSON5 config file."""
     with open(path) as f:
         return json5.load(f)
