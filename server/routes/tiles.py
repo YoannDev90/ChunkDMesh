@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import logging
+import subprocess
+import sys
 from pathlib import Path
 
 import zstd
@@ -17,6 +19,33 @@ _SRV = Path(__file__).resolve().parent.parent
 _DATA = _SRV.parent / "data"
 
 router = APIRouter(prefix="/tiles", tags=["tiles"])
+
+
+def _ensure_palettes() -> bool:
+    """Generate palette files if they don't exist. Returns True if all present."""
+    required = ["block_colors.json", "biome_colors.json", "biome_tint_blocks.json"]
+    if all((_DATA / f).exists() for f in required):
+        return True
+
+    script = _SRV.parent / "scripts" / "generate_block_palette.py"
+    if not script.exists():
+        logger.warning("Palette generation script not found at %s", script)
+        return False
+
+    try:
+        result = subprocess.run(
+            [sys.executable, str(script)],
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+        if result.returncode == 0:
+            logger.info("Palettes generated automatically")
+            return True
+        logger.warning("Palette generation failed: %s", result.stderr[-300:])
+    except Exception as e:
+        logger.warning("Palette generation error: %s", e)
+    return False
 
 
 @router.put("/upload")
@@ -88,6 +117,9 @@ async def serve_palette(filename: str):
         raise HTTPException(status_code=404, detail="File not found")
 
     path = _DATA / filename
+    if not path.exists():
+        _ensure_palettes()
+
     if not path.exists():
         raise HTTPException(status_code=404, detail="Palette not generated yet")
 
