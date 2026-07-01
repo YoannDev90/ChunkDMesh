@@ -1,6 +1,7 @@
 name: Build mcmap
 
 on:
+  workflow_dispatch:
   push:
     paths:
       - 'tiler/**'
