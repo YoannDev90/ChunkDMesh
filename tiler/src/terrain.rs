@@ -140,10 +140,9 @@ pub fn extract_terrain(chunk: &ChunkRawData) -> TerrainData {
             let col = columns.get(&(x, z));
             if let Some(blocks) = col {
                 // Find surface (highest non-air, non-plant block)
+                // Water is a valid surface (oceans, rivers) and has higher priority
+                // than any block below it.
                 for block in blocks.iter() {
-                    if is_water(&block.block_name) {
-                        continue; // Water goes below surface detection
-                    }
                     if is_air(&block.block_name) || is_plant(&block.block_name) {
                         continue;
                     }
