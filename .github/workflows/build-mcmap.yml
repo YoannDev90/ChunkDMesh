@@ -15,7 +15,9 @@ env:
 jobs:
   build-linux:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
+      fail-fast: false
       matrix:
         include:
           - target: x86_64-unknown-linux-gnu
@@ -43,7 +45,7 @@ jobs:
 
       - name: Install cross
         if: matrix.target != 'x86_64-unknown-linux-gnu'
-        run: cargo install cross
+        run: cargo install cross --locked
 
       - name: Build
         run: |
@@ -54,18 +56,26 @@ jobs:
           fi
 
       - name: Package
+        if: success() || failure()
         run: |
-          cp tiler/target/${{ matrix.target }}/release/mcmap bin/mcmap-${{ matrix.name }}
-          chmod +x bin/mcmap-${{ matrix.name }}
+          binary="tiler/target/${{ matrix.target }}/release/mcmap"
+          if [ -f "$binary" ]; then
+            cp "$binary" bin/mcmap-${{ matrix.name }}
+            chmod +x bin/mcmap-${{ matrix.name }}
+          fi
 
       - uses: actions/upload-artifact@v4
+        if: hashFiles(format('bin/mcmap-{0}', matrix.name)) != ''
         with:
           name: mcmap-${{ matrix.name }}
           path: bin/mcmap-${{ matrix.name }}
+          if-no-files-found: ignore
 
   build-macos:
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: macos-13
@@ -95,15 +105,25 @@ jobs:
         run: cargo build --release --target ${{ matrix.target }} --manifest-path tiler/Cargo.toml
 
       - name: Package
-        run: cp tiler/target/${{ matrix.target }}/release/mcmap bin/mcmap-${{ matrix.name }}
+        if: success() || failure()
+        run: |
+          binary="tiler/target/${{ matrix.target }}/release/mcmap"
+          if [ -f "$binary" ]; then
+            cp "$binary" bin/mcmap-${{ matrix.name }}
+          fi
 
       - uses: actions/upload-artifact@v4
+        if: hashFiles(format('bin/mcmap-{0}', matrix.name)) != ''
         with:
           name: mcmap-${{ matrix.name }}
           path: bin/mcmap-${{ matrix.name }}
+          if-no-files-found: ignore
 
   build-windows:
     runs-on: windows-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
     steps:
       - uses: actions/checkout@v4
 
@@ -125,17 +145,22 @@ jobs:
         run: cargo build --release --target x86_64-pc-windows-msvc --manifest-path tiler/Cargo.toml
 
       - name: Package
-        run: cp tiler/target/x86_64-pc-windows-msvc/release/mcmap.exe bin/mcmap-windows-amd64.exe
+        if: success() || failure()
+        run: |
+          $bin = "tiler/target/x86_64-pc-windows-msvc/release/mcmap.exe"
+          if (Test-Path $bin) { Copy-Item $bin "bin/mcmap-windows-amd64.exe" }
 
       - uses: actions/upload-artifact@v4
+        if: hashFiles('bin/mcmap-windows-amd64.exe') != ''
         with:
           name: mcmap-windows-amd64
           path: bin/mcmap-windows-amd64.exe
+          if-no-files-found: ignore
 
   commit-binaries:
     needs: [build-linux, build-macos, build-windows]
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:
       contents: write
     steps:
