@@ -25,7 +25,7 @@ class ClientTiler:
         mcmap_bin = work_dir / "bin" / "mcmap"
         if not mcmap_bin.exists():
             # Try target/release path
-            mcmap_bin = work_dir / "bin" / "rust_tiler" / "target" / "release" / "mcmap"
+            mcmap_bin = work_dir / "tiler" / "target" / "release" / "mcmap"
         if not mcmap_bin.exists():
             return None
 

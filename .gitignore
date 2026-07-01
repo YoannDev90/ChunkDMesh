@@ -241,4 +241,4 @@ __marimo__/
 *.vsix
 
 # Rust build artifacts
-bin/rust_tiler/target/
+tiler/target/
