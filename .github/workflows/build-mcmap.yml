@@ -1,0 +1,160 @@
+name: Build mcmap
+
+on:
+  push:
+    paths:
+      - 'tiler/**'
+    branches: [main]
+  pull_request:
+    paths:
+      - 'tiler/**'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            name: linux-amd64
+          - target: aarch64-unknown-linux-gnu
+            name: linux-arm64
+          - target: armv7-unknown-linux-gnueabihf
+            name: linux-armv7
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            tiler/target
+          key: ${{ runner.os }}-cargo-${{ matrix.target }}-${{ hashFiles('tiler/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-${{ matrix.target }}-
+
+      - name: Install cross
+        if: matrix.target != 'x86_64-unknown-linux-gnu'
+        run: cargo install cross
+
+      - name: Build
+        run: |
+          if [ "${{ matrix.target }}" = "x86_64-unknown-linux-gnu" ]; then
+            cargo build --release --target ${{ matrix.target }} --manifest-path tiler/Cargo.toml
+          else
+            cross build --release --target ${{ matrix.target }} --manifest-path tiler/Cargo.toml
+          fi
+
+      - name: Package
+        run: |
+          cp tiler/target/${{ matrix.target }}/release/mcmap bin/mcmap-${{ matrix.name }}
+          chmod +x bin/mcmap-${{ matrix.name }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mcmap-${{ matrix.name }}
+          path: bin/mcmap-${{ matrix.name }}
+
+  build-macos:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: macos-13
+            target: x86_64-apple-darwin
+            name: macos-amd64
+          - os: macos-14
+            target: aarch64-apple-darwin
+            name: macos-arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            tiler/target
+          key: ${{ runner.os }}-cargo-${{ matrix.target }}-${{ hashFiles('tiler/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-${{ matrix.target }}-
+
+      - name: Build
+        run: cargo build --release --target ${{ matrix.target }} --manifest-path tiler/Cargo.toml
+
+      - name: Package
+        run: cp tiler/target/${{ matrix.target }}/release/mcmap bin/mcmap-${{ matrix.name }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mcmap-${{ matrix.name }}
+          path: bin/mcmap-${{ matrix.name }}
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            tiler/target
+          key: ${{ runner.os }}-cargo-x86_64-pc-windows-msvc-${{ hashFiles('tiler/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-x86_64-pc-windows-msvc-
+
+      - name: Build
+        run: cargo build --release --target x86_64-pc-windows-msvc --manifest-path tiler/Cargo.toml
+
+      - name: Package
+        run: cp tiler/target/x86_64-pc-windows-msvc/release/mcmap.exe bin/mcmap-windows-amd64.exe
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mcmap-windows-amd64
+          path: bin/mcmap-windows-amd64.exe
+
+  commit-binaries:
+    needs: [build-linux, build-macos, build-windows]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: bin/
+          pattern: mcmap-*
+          merge-multiple: true
+
+      - name: Commit binaries
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add bin/mcmap-*
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "build(mcmap): update binaries [skip ci]"
+            git push
+          fi
