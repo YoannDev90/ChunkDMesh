@@ -191,7 +191,7 @@ class ClientTUI:
             lines = list(self._log_buffer)
             offset = self._log_offset
 
-        visible = 15
+        visible = 25
         if offset > 0:
             end = len(lines) - offset
             start = max(0, end - visible)

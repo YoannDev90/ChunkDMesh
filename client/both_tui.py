@@ -411,7 +411,7 @@ class BothTUI:
         table.add_column("Path", style="cyan", ratio=3)
         table.add_column("Status", justify="right", ratio=1)
 
-        for ts, path, status in recent[-12:]:
+        for ts, path, status in recent[-20:]:
             t_str = time.strftime("%H:%M:%S", time.localtime(ts))
             s_style = "green" if status < 300 else "yellow" if status < 400 else "red" if status < 500 else "bold red"
             table.add_row(t_str, path[:50], Text(str(status), style=s_style))
@@ -438,7 +438,7 @@ class BothTUI:
             all_lines.append((ts, icon, msg))
 
         # Apply scroll offset
-        visible = 10
+        visible = 20
         with self.client_tui._lock:
             offset = self._log_offset
         if offset > 0:
