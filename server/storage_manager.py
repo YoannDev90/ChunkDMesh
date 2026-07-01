@@ -19,6 +19,7 @@ class ChunkStorage:
     _write_lock = threading.Lock()
 
     def __init__(self, regions_dir: Path = REGIONS_DIR):
+        """Initialize storage with flat regions directory."""
         self.regions_dir = regions_dir
         self.regions_dir.mkdir(parents=True, exist_ok=True)
 
@@ -52,10 +53,12 @@ class ChunkStorage:
         return sha256, raw_size
 
     def read_mca(self, filename: str) -> bytes | None:
+        """Read region file bytes. Returns None if missing."""
         path = self.regions_dir / filename
         return path.read_bytes() if path.exists() else None
 
     def get_mca_path(self, filename: str) -> Path | None:
+        """Return path to region file if it exists."""
         path = self.regions_dir / filename
         return path if path.exists() else None
 
@@ -69,9 +72,11 @@ class ChunkStorage:
         return compute_file_hash(path)
 
     def list_regions(self) -> list[str]:
+        """List all stored .mca region filenames."""
         return sorted(f.name for f in self.regions_dir.iterdir() if f.suffix == ".mca")
 
     def total_size_mb(self) -> float:
+        """Compute total storage size in MB (blobs or .mca files)."""
         blob_dir = self.regions_dir / ".blobs"
         if blob_dir.exists():
             total = sum(f.stat().st_size for f in blob_dir.iterdir() if f.is_file())

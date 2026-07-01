@@ -74,6 +74,7 @@ LOADER_CONFIGS: dict[str, LoaderConfig] = {
 
 
 async def get_fabric_versions(minecraft_version: str | None = None) -> list[str]:
+    """Fetch available Fabric loader versions for a Minecraft version."""
     target = minecraft_version or await get_latest_minecraft_release_version()
     try:
         client = await get_http_client()
@@ -88,6 +89,7 @@ async def get_fabric_versions(minecraft_version: str | None = None) -> list[str]
 
 
 async def get_quilt_versions() -> list[str]:
+    """Fetch available Quilt loader versions from Maven metadata."""
     try:
         client = await get_http_client()
         response = await client.get(
@@ -110,6 +112,7 @@ async def get_quilt_versions() -> list[str]:
 
 
 async def get_forge_versions(minecraft_version: str | None = None, version_only: bool = False) -> list[str]:
+    """Fetch available Forge versions for a Minecraft version from Maven metadata."""
     target = minecraft_version or await get_latest_minecraft_release_version()
     try:
         client = await get_http_client()
@@ -131,6 +134,7 @@ async def get_forge_versions(minecraft_version: str | None = None, version_only:
 
 
 async def get_neoforge_versions(minecraft_version: str | None = None, version_type: str | None = None) -> list[str]:
+    """Fetch available NeoForge versions from Maven metadata."""
     if version_type and version_type not in ["release"]:
         raise ValueError("Invalid NeoForge version type. Must be 'release' or None.")
     try:

@@ -27,6 +27,7 @@ _secret_key_lock = threading.Lock()
 
 
 def get_secret_key() -> str:
+    """Load or generate JWT secret key from config/key.pem."""
     global _secret_key_cache
     if _secret_key_cache is not None:
         return _secret_key_cache
@@ -51,6 +52,7 @@ def get_secret_key() -> str:
 
 
 async def verify_token(authorization: str | None = Header(None)):
+    """Verify JWT token from Authorization header. Returns decoded payload."""
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing or invalid token")
 
@@ -66,11 +68,14 @@ async def verify_token(authorization: str | None = Header(None)):
 
 
 class LoginRequest(BaseModel):
+    """Client login payload with power score."""
+
     power_score: float
 
 
 @router.post("/login")
 async def login(login_request: LoginRequest, request: Request):
+    """Register client and return JWT token."""
     sk_key = get_secret_key()
     async with get_db_session() as session:
         client = Client(

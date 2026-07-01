@@ -26,6 +26,7 @@ _ROOT = _SRV.parent
 
 
 async def _sweep_dead_clients():
+    """Periodically detect and reassign batches from dead clients."""
     while True:
         try:
             await asyncio.sleep(30)
@@ -94,6 +95,7 @@ async def _update_state_loop():
 
 @asynccontextmanager
 async def lifespan(app_instance):
+    """Application lifespan: load config, start background tasks, cleanup on shutdown."""
     # Load world config for TUI display
     from config import Config
 
@@ -133,6 +135,7 @@ FAVICON_PATH = _SRV / "config" / "favicon.ico"
 
 @app.middleware("http")
 async def access_log_middleware(request: Request, call_next):
+    """Log every request path and status code to server_state."""
     resp = await call_next(request)
     server_state.record_request(request.url.path, resp.status_code)
     return resp
@@ -149,20 +152,24 @@ app.include_router(tiles.router)
 
 @app.get("/")
 async def root(request: Request):
+    """Root endpoint returning project info."""
     return JSONResponse({"project": "ChunkDMesh", "message": "Welcome to ChunkDMesh API"})
 
 
 @app.get("/health")
 async def health(request: Request):
+    """Health check endpoint."""
     return JSONResponse({"status": "ok"})
 
 
 @app.get("/favicon.ico", include_in_schema=False)
 async def favicon():
+    """Serve favicon.ico."""
     return FileResponse(FAVICON_PATH, media_type="image/x-icon")
 
 
 async def run_api():
+    """Start uvicorn server with configured host/port and unified logging."""
     root_logger = logging.getLogger()
     host = os.environ.get("CHUNKMESH_HOST", "0.0.0.0")
     port = int(os.environ.get("CHUNKMESH_PORT", "8000"))

@@ -22,10 +22,14 @@ DATABASE_URL = f"sqlite+aiosqlite:///{_DB_DIR / 'chunkdmesh.db'}"
 
 
 class Base(DeclarativeBase):
+    """SQLAlchemy declarative base for all ORM models."""
+
     pass
 
 
 class Client(Base):
+    """Minecraft client that renders chunks for the orchestrator."""
+
     __tablename__ = "clients"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -39,6 +43,8 @@ class Client(Base):
 
 
 class World(Base):
+    """Minecraft world configuration stored in the database."""
+
     __tablename__ = "worlds"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -52,6 +58,8 @@ class World(Base):
 
 
 class Batch(Base):
+    """Region batch assigned to a client for rendering."""
+
     __tablename__ = "batches"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -70,6 +78,8 @@ class Batch(Base):
 
 
 class Task(Base):
+    """Available region rendering task."""
+
     __tablename__ = "tasks"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -80,6 +90,8 @@ class Task(Base):
 
 
 class Validation(Base):
+    """Validation record for a rendered region file hash."""
+
     __tablename__ = "validations"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)

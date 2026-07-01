@@ -72,7 +72,10 @@ BLOCK_REGISTRY: dict[int, str] = {
 
 
 class HoverService:
+    """Service that provides hover/terrain data for chunks via Rust tiler."""
+
     def __init__(self, region_dir: str, tiler: RustTiler, cache: TileCache):
+        """Initialize hover service with region dir, tiler, and cache."""
         self.region_dir = Path(region_dir)
         self.tiler = tiler
         self.cache = cache
@@ -84,6 +87,7 @@ class HoverService:
         return str(path) if path.exists() else None
 
     def get_hover_data(self, chunk_x: int, chunk_z: int) -> dict:
+        """Get hover/terrain data for a chunk, using cache or rendering."""
         cached = self.cache.get_hover_data(chunk_x, chunk_z)
         if cached:
             return cached
@@ -105,6 +109,7 @@ class HoverService:
         return result
 
     def get_block_at_pixel(self, chunk_x: int, chunk_z: int, local_x: int, local_z: int) -> dict:
+        """Get block-level info for a specific pixel within a chunk."""
         if not (0 <= local_x < 16 and 0 <= local_z < 16):
             return {"error": "Invalid local coords"}
 

@@ -14,6 +14,7 @@ def _ensure_dir():
 
 
 def _hash_file(path: Path, piece_size: int = 256 * 1024) -> bytes:
+    """Compute concatenated SHA-1 hashes of file pieces for torrent."""
     pieces = b""
     with open(path, "rb") as f:
         while True:
@@ -25,10 +26,12 @@ def _hash_file(path: Path, piece_size: int = 256 * 1024) -> bytes:
 
 
 def _encode_bytes(data: bytes) -> bytes:
+    """Bencode-encode a byte string."""
     return str(len(data)).encode() + b":" + data
 
 
 def _encode_int(n: int) -> bytes:
+    """Bencode-encode an integer."""
     return b"i" + str(n).encode() + b"e"
 
 
@@ -37,6 +40,7 @@ def _encode_string(s: str) -> bytes:
 
 
 def _encode_list(items: list) -> bytes:
+    """Bencode-encode a list."""
     result = b"l"
     for item in items:
         if isinstance(item, bytes):
@@ -54,6 +58,7 @@ def _encode_list(items: list) -> bytes:
 
 
 def _encode_dict(d: dict) -> bytes:
+    """Bencode-encode a dictionary."""
     result = b"d"
     for key, value in d.items():
         if isinstance(key, str):
@@ -79,6 +84,7 @@ def create_torrent(
     trackers: list[str] | None = None,
     piece_size: int = 256 * 1024,
 ) -> Path:
+    """Create a .torrent file for P2P distribution of mods.zip."""
     if trackers is None:
         trackers = ["udp://tracker.opentrackr.org:1337/announce"]
 

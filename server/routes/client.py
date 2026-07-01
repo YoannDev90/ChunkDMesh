@@ -19,6 +19,7 @@ router = APIRouter(tags=["client"])
 
 @router.post("/heartbeat")
 async def heartbeat(request: Request, token_data: dict = Depends(verify_token)):
+    """Update client last_seen timestamp."""
     client_id = token_data.get("client_id")
     if not client_id:
         raise HTTPException(status_code=400, detail="Invalid token payload")
@@ -34,6 +35,8 @@ async def heartbeat(request: Request, token_data: dict = Depends(verify_token)):
 
 
 class BenchmarkRequest(BaseModel):
+    """Benchmark submission payload."""
+
     chunks_per_second: float
     duration_seconds: float
     chunks_generated: int
@@ -41,6 +44,7 @@ class BenchmarkRequest(BaseModel):
 
 @router.post("/benchmark")
 async def submit_benchmark(req: BenchmarkRequest, request: Request, token_data: dict = Depends(verify_token)):
+    """Accept and store client benchmark result."""
     client_id = token_data.get("client_id")
     if not client_id:
         raise HTTPException(status_code=400, detail="Invalid token payload")

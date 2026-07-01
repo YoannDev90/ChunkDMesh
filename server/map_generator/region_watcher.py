@@ -14,6 +14,7 @@ class RegionWatcher:
     """
 
     def __init__(self, region_dir: str, on_change: Callable[[int, int], None], interval: float = 5.0):
+        """Initialize watcher with region directory and change callback."""
         self.region_dir = Path(region_dir)
         self.on_change = on_change
         self.interval = interval
@@ -22,6 +23,7 @@ class RegionWatcher:
         self._thread: threading.Thread | None = None
 
     def start(self):
+        """Start the polling thread."""
         if self._thread is not None:
             return
         self._stop_event.clear()
@@ -30,6 +32,7 @@ class RegionWatcher:
         logger.info("Region watcher started (poll %ss)", self.interval)
 
     def stop(self):
+        """Stop the polling thread."""
         self._stop_event.set()
         if self._thread:
             self._thread.join(timeout=10)

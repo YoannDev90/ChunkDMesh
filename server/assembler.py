@@ -16,6 +16,7 @@ class RegionAssembler:
     """
 
     def __init__(self, world_name: str, exports_dir: Path = EXPORTS_DIR):
+        """Initialize assembler for given world name."""
         self.world_name = world_name
         self.exports_dir = exports_dir
         self.world_dir = exports_dir / world_name
@@ -56,6 +57,7 @@ class RegionAssembler:
         return {"assembled": assembled, "total": total, "errors": errors[:10]}
 
     def get_progress(self) -> dict:
+        """Return assembly progress: file count and total size."""
         if not self.region_dir.exists():
             return {"total_files": 0, "total_size_mb": 0.0}
         files = list(self.region_dir.glob("*.mca"))

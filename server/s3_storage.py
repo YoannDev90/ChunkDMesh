@@ -15,6 +15,8 @@ logger = logging.getLogger(__name__)
 
 
 class S3Storage:
+    """S3/Cloudflare R2 storage driver for region file uploads."""
+
     def __init__(
         self,
         bucket: str,
@@ -24,6 +26,7 @@ class S3Storage:
         region: str = "auto",
         prefix: str = "",
     ):
+        """Initialize S3 storage client with credentials."""
         self.bucket = bucket
         self.prefix = prefix.rstrip("/") + "/" if prefix else ""
         self._endpoint_url = endpoint_url
@@ -33,6 +36,7 @@ class S3Storage:
         self._client = None
 
     def _get_client(self):
+        """Lazy-init and return boto3 S3 client."""
         if self._client is not None:
             return self._client
 
@@ -53,6 +57,7 @@ class S3Storage:
         return self._client
 
     def upload_file(self, local_path: Path, key: str) -> str:
+        """Upload a local file to S3 bucket. Returns S3 URI."""
         client = self._get_client()
         full_key = self.prefix + key
 
@@ -62,6 +67,7 @@ class S3Storage:
         return f"s3://{self.bucket}/{full_key}"
 
     def upload_batch(self, batch_dir: Path, batch_id: int) -> list[str]:
+        """Upload all .mca files in a batch directory to S3."""
         urls = []
         for mca_file in batch_dir.glob("*.mca"):
             key = f"batches/{batch_id}/{mca_file.name}"
@@ -70,6 +76,7 @@ class S3Storage:
         return urls
 
     def download_file(self, key: str, local_path: Path) -> Path:
+        """Download a file from S3 to local path."""
         client = self._get_client()
         full_key = self.prefix + key
 
@@ -79,12 +86,14 @@ class S3Storage:
         return local_path
 
     def delete_file(self, key: str):
+        """Delete a file from S3 bucket."""
         client = self._get_client()
         full_key = self.prefix + key
         logger.info("Deleting s3://%s/%s", self.bucket, full_key)
         client.delete_object(Bucket=self.bucket, Key=full_key)
 
     def list_files(self, prefix: str = "") -> list[str]:
+        """List files in S3 bucket under given prefix."""
         client = self._get_client()
         full_prefix = self.prefix + prefix
 
@@ -92,6 +101,7 @@ class S3Storage:
         return [obj["Key"] for obj in response.get("Contents", [])]
 
     def presign_url(self, key: str, expiration: int = 3600) -> str:
+        """Generate pre-signed download URL for a key."""
         client = self._get_client()
         full_key = self.prefix + key
 
@@ -104,6 +114,7 @@ class S3Storage:
 
 
 def create_storage_from_env() -> S3Storage | None:
+    """Create S3Storage from CHUNKMESH_S3_* env vars. Returns None if not configured."""
     import os
 
     bucket = os.environ.get("CHUNKDMESH_S3_BUCKET")

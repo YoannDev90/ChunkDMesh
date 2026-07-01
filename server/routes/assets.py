@@ -31,6 +31,7 @@ _TARGET_MAP = {
 
 
 def _file_stream_generator(path: str, chunk_size: int = 1024 * 64) -> Generator[bytes, None, None]:
+    """Generator that yields file chunks for streaming responses."""
     with open(path, "rb") as f:
         while True:
             chunk = f.read(chunk_size)
@@ -41,6 +42,7 @@ def _file_stream_generator(path: str, chunk_size: int = 1024 * 64) -> Generator[
 
 @router.get("/mods.zip")
 async def get_mods(request: Request, token_data: dict = Depends(verify_token)):
+    """Download mods.zip for client-side installation."""
     zip_path = str(_DATA / "mods.zip")
     if not os.path.exists(zip_path):
         raise HTTPException(status_code=404, detail="Mods not found")
@@ -51,6 +53,7 @@ async def get_mods(request: Request, token_data: dict = Depends(verify_token)):
 
 @router.get("/config.json")
 async def get_config(request: Request, token_data: dict = Depends(verify_token)):
+    """Return validated world configuration as JSON."""
     config = Config()
     await config.validate()
     return JSONResponse(config.to_dict())

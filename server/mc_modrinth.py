@@ -74,8 +74,10 @@ async def get_modrinth_download(project_id: str, version: str, loader: str, mine
 
 
 async def get_chunky_download(loader: str, minecraft_version: str, chunky_version: str) -> dict | None:
+    """Get download info for Chunky mod from Modrinth."""
     return await get_modrinth_download(CHUNKY_MODRINTH_PROJECT_ID, chunky_version, loader, minecraft_version)
 
 
 async def get_fabric_api_download(minecraft_version: str) -> dict | None:
+    """Get download info for Fabric API from Modrinth."""
     return await get_modrinth_download(FABRIC_API_PROJECT_ID, "", "fabric", minecraft_version)

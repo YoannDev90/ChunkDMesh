@@ -18,6 +18,7 @@ class RustTiler:
     def __init__(
         self, binary_path: str, palette_path: str = "", biome_colors_path: str = "", biome_tints_path: str = ""
     ):
+        """Initialize Rust tiler bridge with paths to binary and palette files."""
         self.binary = binary_path
         self.palette_path = palette_path
         self.biome_colors_path = biome_colors_path
@@ -58,6 +59,7 @@ class RustTiler:
             return False
 
     def render_chunk(self, region_path: str, chunk_x: int, chunk_z: int) -> tuple[bytes | None, dict | None]:
+        """Render a single chunk via Rust binary. Returns (png_data, terrain_json)."""
         if not Path(self.binary).exists():
             logger.error("Rust binary not found: %s", self.binary)
             return None, None

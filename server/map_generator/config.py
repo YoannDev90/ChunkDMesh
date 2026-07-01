@@ -4,6 +4,8 @@ from pathlib import Path
 
 @dataclass
 class MapConfig:
+    """Configuration dataclass for the map tile generator."""
+
     region_dir: str
     tile_cache_dir: str
     rust_binary: str
@@ -32,6 +34,7 @@ class MapConfig:
 
     @classmethod
     def from_flat_regions_dir(cls, regions_dir: str) -> "MapConfig":
+        """Create MapConfig from flat regions directory path."""
         base = Path(__file__).resolve().parent.parent.parent
         data_dir = base / "data"
         return cls(
@@ -45,8 +48,10 @@ class MapConfig:
 
     @property
     def region_path(self) -> Path:
+        """Return Path for region directory."""
         return Path(self.region_dir)
 
     @property
     def cache_path(self) -> Path:
+        """Return Path for tile cache directory."""
         return Path(self.tile_cache_dir)

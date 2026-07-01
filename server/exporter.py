@@ -11,12 +11,16 @@ EXPORTS_DIR = Path(__file__).resolve().parent.parent / "data" / "exports"
 
 
 class ExportManager:
+    """Manage .tar.gz archive creation and listing for world exports."""
+
     def __init__(self, world_name: str, exports_dir: Path = EXPORTS_DIR):
+        """Initialize export manager for given world name."""
         self.world_name = world_name
         self.exports_dir = exports_dir
         self.world_dir = exports_dir / world_name
 
     def export(self) -> Path:
+        """Create .tar.gz archive of assembled region files. Returns archive path."""
         if not self.world_dir.exists():
             raise FileNotFoundError(f"World directory not found: {self.world_dir}")
 
@@ -41,6 +45,7 @@ class ExportManager:
         return archive_path
 
     def list_archives(self) -> list[dict]:
+        """List available export archives sorted newest first."""
         archives = []
         for f in self.exports_dir.glob(f"{self.world_name}_*.tar.gz"):
             archives.append(
@@ -53,12 +58,14 @@ class ExportManager:
         return sorted(archives, key=lambda x: x["name"], reverse=True)
 
     def get_latest_archive(self) -> Path | None:
+        """Return path to most recent archive, or None."""
         archives = self.list_archives()
         if archives:
             return Path(archives[0]["path"])
         return None
 
     def delete_archive(self, archive_name: str) -> bool:
+        """Delete an export archive by name. Returns True if deleted."""
         archive_path = self.exports_dir / archive_name
         if archive_path.exists() and archive_path.parent == self.exports_dir:
             archive_path.unlink()

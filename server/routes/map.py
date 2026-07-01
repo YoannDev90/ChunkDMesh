@@ -30,6 +30,7 @@ _overview_lock = threading.Lock()
 
 
 def _init_map_generator():
+    """Lazy-init map generator with TileCache and MapConfig."""
     global _map_generator
     if _map_generator is not None:
         return _map_generator
@@ -242,11 +243,13 @@ def invalidate_overview():
 
 @router.get("/admin/map", response_class=HTMLResponse)
 async def map_viewer(request: Request):
+    """Serve map viewer HTML page."""
     return templates.TemplateResponse(request, "map.html")
 
 
 @router.get("/admin/map/regions")
 async def map_regions():
+    """Return region batch status data for map overlay."""
     from db import Batch, get_db_session
     from sqlalchemy import select
 
@@ -262,6 +265,7 @@ async def map_regions():
 
 @router.get("/admin/map/tile/{zoom}/{x}/{y}.png")
 async def map_tile(zoom: int, x: int, y: int):
+    """Serve map tile PNG for given zoom level and coords."""
     if zoom < 0 or zoom > 5:
         raise HTTPException(status_code=400, detail="Invalid zoom")
 
@@ -284,6 +288,7 @@ async def map_tile(zoom: int, x: int, y: int):
 
 @router.get("/admin/map/hover/{chunk_x}/{chunk_z}")
 async def map_hover_data(chunk_x: int, chunk_z: int):
+    """Return cached hover/terrain data for a chunk."""
     mg = _init_map_generator()
     cached = mg["cache"].get_hover_data(chunk_x, chunk_z)
     if cached:
@@ -293,6 +298,7 @@ async def map_hover_data(chunk_x: int, chunk_z: int):
 
 @router.get("/admin/map/hover/{chunk_x}/{chunk_z}/{local_x}/{local_z}")
 async def map_hover_pixel(chunk_x: int, chunk_z: int, local_x: int, local_z: int):
+    """Return block-level hover data for a specific pixel within a chunk."""
     if not (0 <= local_x < 16 and 0 <= local_z < 16):
         raise HTTPException(status_code=400, detail="Invalid local coords")
     mg = _init_map_generator()
