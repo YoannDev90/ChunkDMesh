@@ -75,6 +75,27 @@ class Provisioner:
         self.log("🔧", f"Server jar: {jar_path}")
         return jar_path
 
+    def download_palettes(self, work_dir: Path) -> bool:
+        """Download palette files from server for local mcmap rendering."""
+        data_dir = work_dir / "data"
+        data_dir.mkdir(parents=True, exist_ok=True)
+
+        palettes = ["block_colors.json", "biome_colors.json", "biome_tint_blocks.json"]
+        downloaded = 0
+        for name in palettes:
+            dest = data_dir / name
+            if dest.exists():
+                downloaded += 1
+                continue
+            resp = self._get(f"/tiles/palette/{name}")
+            if resp.status_code == 200:
+                dest.write_bytes(resp.content)
+                downloaded += 1
+                self.log("🎨", f"Downloaded palette: {name}")
+            else:
+                self.log("⚠️", f"Palette {name} not available on server")
+        return downloaded > 0
+
     def _get(self, path: str) -> httpx.Response:
         with httpx.Client(follow_redirects=True, timeout=30) as client:
             return client.get(f"{self.server_url}{path}", headers=self.auth_headers)

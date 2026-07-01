@@ -121,17 +121,11 @@ async def map_tile(zoom: int, x: int, y: int):
     mg = _init_map_generator()
 
     if zoom == 5:
-        chunk_x, chunk_z = x, y
         png = mg["cache"].get_tile_png(x, y, zoom)
         if png is None:
-            region_path = mg["hover"]._get_region_path(chunk_x, chunk_z)
-            if not region_path:
-                raise HTTPException(status_code=404, detail="Region not found")
-            png_data, _ = mg["tiler"].render_chunk(region_path, chunk_x, chunk_z)
-            if png_data is None:
-                raise HTTPException(status_code=500, detail="Render failed")
-            mg["cache"].set_tile_png(x, y, png_data, zoom)
-            png = png_data
+            # No pre-uploaded tile found — skip server-side render
+            # Tiles should be generated client-side and uploaded via /tiles/upload
+            raise HTTPException(status_code=404, detail="Tile not found (client must generate)")
         return Response(content=png, media_type="image/png", headers={"Cache-Control": "public, max-age=3600"})
 
     try:
@@ -144,14 +138,8 @@ async def map_tile(zoom: int, x: int, y: int):
         if cached:
             return cached
         if tz == 5:
-            cx, cz = tx, ty
-            rp = mg["hover"]._get_region_path(cx, cz)
-            if not rp:
-                return None
-            png, _ = mg["tiler"].render_chunk(rp, cx, cz)
-            if png:
-                mg["cache"].set_tile_png(tx, ty, png, tz)
-            return png
+            # Zoom 5 must come from client upload — no server-side fallback
+            return None
         sub = []
         for sdx in range(2):
             for sdy in range(2):
@@ -192,7 +180,11 @@ async def map_tile(zoom: int, x: int, y: int):
 @router.get("/admin/map/hover/{chunk_x}/{chunk_z}")
 async def map_hover_data(chunk_x: int, chunk_z: int):
     mg = _init_map_generator()
-    return JSONResponse(mg["hover"].get_hover_data(chunk_x, chunk_z))
+    cached = mg["cache"].get_hover_data(chunk_x, chunk_z)
+    if cached:
+        return JSONResponse(cached)
+    # No pre-uploaded hover data — client must generate and upload
+    raise HTTPException(status_code=404, detail="Hover data not found (client must generate)")
 
 
 @router.get("/admin/map/hover/{chunk_x}/{chunk_z}/{local_x}/{local_z}")
@@ -200,4 +192,8 @@ async def map_hover_pixel(chunk_x: int, chunk_z: int, local_x: int, local_z: int
     if not (0 <= local_x < 16 and 0 <= local_z < 16):
         raise HTTPException(status_code=400, detail="Invalid local coords")
     mg = _init_map_generator()
-    return JSONResponse(mg["hover"].get_block_at_pixel(chunk_x, chunk_z, local_x, local_z))
+    cached = mg["cache"].get_hover_data(chunk_x, chunk_z)
+    if not cached:
+        raise HTTPException(status_code=404, detail="Hover data not found (client must generate)")
+    # Return the cached hover data — client-side JS can extract the block
+    return JSONResponse(cached)

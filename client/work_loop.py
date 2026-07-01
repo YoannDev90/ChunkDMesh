@@ -59,6 +59,7 @@ def run_work_loop(
     set_progress_fn,
     set_batch_count_fn,
     expected_chunks: int = 1024,
+    tiler=None,
 ) -> int:
     """Main work loop. Returns batch count when done."""
 
@@ -112,6 +113,20 @@ def run_work_loop(
                 set_progress_fn,
                 expected_chunks,
             )
+
+        # Generate map tiles from .mca using mcmap
+        if tiler:
+            set_status_fn("tiling", f"Region {region_label}")
+            with monitor.measure("tile_generation"):
+                _generate_tiles(
+                    tiler,
+                    uploader,
+                    region_dir,
+                    rx,
+                    rz,
+                    region_label,
+                    log_fn,
+                )
 
         _upload_and_submit(
             server_url,
@@ -294,3 +309,51 @@ def _upload_and_submit(
             log_fn("⚠️", f"No files uploaded for batch #{batch_id}, skipping hash submission")
     finally:
         rcon.run("save-on")
+
+
+def _generate_tiles(tiler, uploader, region_dir, rx, rz, region_label, log_fn):
+    """Generate PNG tiles from .mca files using mcmap and upload to server."""
+
+    mca_path = region_dir / f"r.{rx}.{rz}.mca"
+    if not mca_path.exists():
+        log_fn("⚠️", f"No .mca file for region {region_label}, skipping tile generation")
+        return
+
+    # Output dir for rendered tiles (alongside the .mca)
+    tile_dir = region_dir / ".tile_output" / f"r.{rx}.{rz}"
+    tile_dir.mkdir(parents=True, exist_ok=True)
+
+    log_fn("🗺️ ", f"Rendering tiles for region {region_label}...")
+    tile_paths = tiler.render_region(mca_path, tile_dir)
+
+    if not tile_paths:
+        log_fn("⚠️", f"No tiles generated for region {region_label}")
+        return
+
+    log_fn("🗺️ ", f"Generated {len(tile_paths)} tiles for region {region_label}")
+
+    # Upload tiles to server
+    log_fn("📤", f"Uploading {len(tile_paths)} tiles...")
+    result = uploader.upload_tiles_batch(tile_paths, tile_dir)
+    log_fn("📤", f"Uploaded {result['uploaded']} tiles, {len(result['errors'])} errors")
+    if result["errors"]:
+        for err in result["errors"][:3]:
+            log_fn("⚠️", f"  {err}")
+
+    # Upload hover/terrain data if available
+    uploaded_hover = 0
+    for stem in tile_paths:
+        json_path = tile_dir / f"{stem}.json"
+        terrain = tiler.parse_terrain_json(json_path)
+        if terrain:
+            parts = stem.split("_")
+            if len(parts) == 3:
+                try:
+                    chunk_x = int(parts[1])
+                    chunk_z = int(parts[2])
+                    uploader.upload_hover_data(chunk_x, chunk_z, terrain)
+                    uploaded_hover += 1
+                except Exception:
+                    pass
+    if uploaded_hover:
+        log_fn("🗺️ ", f"Uploaded {uploaded_hover} hover data files")

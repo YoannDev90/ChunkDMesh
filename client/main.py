@@ -135,6 +135,10 @@ def main(bg: bool = False):
                 tui.stop()
             return
 
+    # Download palette files for client-side tile generation
+    log("🎨", "Downloading palettes for tile generation...")
+    provisioner.download_palettes(work_dir)
+
     # ── MC lifecycle ────────────────────────────────────────
     lifecycle = MCLifecycle(server_dir, java_bin, jar_path, asset_mgr, seed, mc_version, log_fn=log)
 
@@ -194,6 +198,17 @@ def main(bg: bool = False):
 
     uploader = RegionUploader(SERVER_URL, token)
 
+    # Initialize client-side tile generator (mcmap)
+    tiler = None
+    from tiler import ClientTiler
+
+    work_dir = Path.home() / ".chunkdmesh" / "work"
+    tiler = ClientTiler.from_work_dir(work_dir)
+    if tiler:
+        log("🗺️ ", "Client-side tile generation enabled (mcmap found)")
+    else:
+        log("🗺️ ", "mcmap not found, tiles will be generated server-side")
+
     batch_count = run_work_loop(
         server_url=SERVER_URL,
         auth_headers=provisioner.auth_headers,
@@ -209,6 +224,7 @@ def main(bg: bool = False):
         set_region_fn=set_region,
         set_progress_fn=set_progress,
         set_batch_count_fn=set_batch_count,
+        tiler=tiler,
     )
 
     # ── Cleanup ─────────────────────────────────────────────

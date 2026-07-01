@@ -15,7 +15,7 @@ from constants import HEARTBEAT_TIMEOUT_SECONDS
 from db import Batch, Client, get_db_session
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
-from routes import admin, assets, auth, client, map, tasks
+from routes import admin, assets, auth, client, map, tasks, tiles
 from sqlalchemy import func, select
 from state import server_state
 
@@ -144,6 +144,7 @@ app.include_router(tasks.router)
 app.include_router(assets.router)
 app.include_router(admin.router)
 app.include_router(map.router)
+app.include_router(tiles.router)
 
 
 @app.get("/")
