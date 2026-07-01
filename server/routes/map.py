@@ -62,8 +62,8 @@ def _init_map_generator():
 def _build_overview_image(cache_dir: Path) -> bytes | None:
     """Build a single overview PNG from all zoom-5 tiles.
 
-    Finds the bounding box of all tiles, assembles them into one image,
-    then downscales to 512x512 (or smaller). Returns PNG bytes.
+    Assembles all tiles at full resolution, then downscales to fit max_dim.
+    Returns PNG bytes.
     """
     try:
         from PIL import Image
@@ -103,29 +103,31 @@ def _build_overview_image(cache_dir: Path) -> bytes | None:
     cols = max_x - min_x + 1
     rows = max_z - min_z + 1
 
-    # Cap overview size: if too many tiles, downscale more
-    max_dim = 512
-    scale = min(1.0, max_dim / (cols * tile_w), max_dim / (rows * tile_h))
-    out_w = int(cols * tile_w * scale)
-    out_h = int(rows * tile_h * scale)
-
-    overview = Image.new("RGB", (out_w, out_h), (34, 34, 34))
+    # Assemble at full resolution first
+    full_w = cols * tile_w
+    full_h = rows * tile_h
+    assembled = Image.new("RGB", (full_w, full_h), (34, 34, 34))
 
     for tx, tz, path in tiles:
         try:
             tile_img = Image.open(path)
-            # Position in overview
-            px = int((tx - min_x) * tile_w * scale)
-            pz = int((tz - min_z) * tile_h * scale)
-            tw = max(1, int(tile_w * scale))
-            th = max(1, int(tile_h * scale))
-            overview.paste(tile_img.resize((tw, th), Image.Resampling.LANCZOS), (px, pz))
+            px = (tx - min_x) * tile_w
+            pz = (tz - min_z) * tile_h
+            assembled.paste(tile_img, (px, pz))
             tile_img.close()
         except Exception as e:
             logger.warning("Failed to read tile %s: %s", path, e)
 
+    # Downscale to fit max_dim
+    max_dim = 512
+    if full_w > max_dim or full_h > max_dim:
+        scale = min(max_dim / full_w, max_dim / full_h)
+        new_w = max(1, int(full_w * scale))
+        new_h = max(1, int(full_h * scale))
+        assembled = assembled.resize((new_w, new_h), Image.Resampling.LANCZOS)
+
     buf = io.BytesIO()
-    overview.save(buf, format="PNG", optimize=True)
+    assembled.save(buf, format="PNG", optimize=True)
     return buf.getvalue()
 
 
