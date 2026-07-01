@@ -20,7 +20,7 @@ impl Default for TilerConfig {
     fn default() -> Self {
         TilerConfig {
             water_overlay_color: [40, 100, 220],
-            water_overlay_blend: 0.55,
+            water_overlay_blend: 0.6,
             shading: ShadingConfig::default(),
             enable_shading: true,
             enable_biome_tint: true,
