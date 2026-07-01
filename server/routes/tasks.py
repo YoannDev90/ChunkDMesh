@@ -22,6 +22,24 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
+_ZSTD_MAX_RATIO = 2048
+
+
+def _safe_decompress(body: bytes, max_decompressed: int) -> bytes:
+    """Decompress zstd data with ratio-based OOM guard."""
+    try:
+        est = len(body) * _ZSTD_MAX_RATIO
+        if est > max_decompressed:
+            raise HTTPException(
+                status_code=413,
+                detail=f"Payload too large: {len(body)} compressed would decompress to >{max_decompressed} bytes",
+            )
+        return zstd.decompress(body)
+    except HTTPException:
+        raise
+    except Exception:
+        return body
+
 
 class SubmitTasksRequest(BaseModel):
     """Hash submission payload for batch validation."""
@@ -168,61 +186,55 @@ async def upload_chunks(batch_id: int, request: Request, token_data: dict = Depe
     if not client_id:
         raise HTTPException(status_code=400, detail="Invalid token payload")
     chunk_data = await request.body()
+    decompressed_data = _safe_decompress(chunk_data, max_decompressed=50 * 1024 * 1024)
+    raw_filename = request.headers.get("X-Filename", "r.0.0.mca")
     try:
-        decompressed_data = zstd.decompress(chunk_data)
-        raw_filename = request.headers.get("X-Filename", "r.0.0.mca")
-        try:
-            filename = sanitize_filename(raw_filename)
-        except ValueError as err:
-            raise HTTPException(status_code=400, detail="Invalid filename") from err
+        filename = sanitize_filename(raw_filename)
+    except ValueError as err:
+        raise HTTPException(status_code=400, detail="Invalid filename") from err
 
-        if not filename.endswith(".mca"):
-            raise HTTPException(status_code=400, detail="Only .mca files accepted")
+    if not filename.endswith(".mca"):
+        raise HTTPException(status_code=400, detail="Only .mca files accepted")
 
-        storage = ChunkStorage()
-        sha256_hash, raw_size = storage.write_mca(filename, decompressed_data)
+    storage = ChunkStorage()
+    sha256_hash, raw_size = storage.write_mca(filename, decompressed_data)
 
-        async with get_db_session() as session:
-            existing = await session.execute(
-                select(Validation).where(
-                    Validation.batch_id == batch_id,
-                    Validation.file_hash == sha256_hash,
+    async with get_db_session() as session:
+        existing = await session.execute(
+            select(Validation).where(
+                Validation.batch_id == batch_id,
+                Validation.file_hash == sha256_hash,
+            )
+        )
+        if not existing.scalar_one_or_none():
+            session.add(
+                Validation(
+                    batch_id=batch_id,
+                    client_id=client_id,
+                    file_hash=sha256_hash,
+                    storage_path=filename,
                 )
             )
-            if not existing.scalar_one_or_none():
-                session.add(
-                    Validation(
-                        batch_id=batch_id,
-                        client_id=client_id,
-                        file_hash=sha256_hash,
-                        storage_path=filename,
-                    )
-                )
 
-            batch_result = await session.execute(select(Batch).where(Batch.id == batch_id).limit(1))
-            batch = batch_result.scalar_one_or_none()
-            if batch and batch.status == "assigned":
-                batch.status = "working"
-            await session.commit()
+        batch_result = await session.execute(select(Batch).where(Batch.id == batch_id).limit(1))
+        batch = batch_result.scalar_one_or_none()
+        if batch and batch.status == "assigned":
+            batch.status = "working"
+        await session.commit()
 
-        logger.info(
-            "upload: batch=%s file=%s hash=%s raw=%s compressed=%s",
-            batch_id,
-            filename,
-            sha256_hash,
-            raw_size,
-            len(chunk_data),
-        )
-        return JSONResponse(
-            {
-                "status": "received",
-                "batch_id": batch_id,
-                "filename": filename,
-                "hash": sha256_hash,
-            }
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error("upload failed: batch=%s error=%s", batch_id, e)
-        raise HTTPException(status_code=400, detail="Upload failed") from e
+    logger.info(
+        "upload: batch=%s file=%s hash=%s raw=%s compressed=%s",
+        batch_id,
+        filename,
+        sha256_hash,
+        raw_size,
+        len(chunk_data),
+    )
+    return JSONResponse(
+        {
+            "status": "received",
+            "batch_id": batch_id,
+            "filename": filename,
+            "hash": sha256_hash,
+        }
+    )

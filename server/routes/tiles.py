@@ -21,6 +21,33 @@ _DATA = _SRV.parent / "data"
 
 router = APIRouter(prefix="/tiles", tags=["tiles"])
 
+_ZSTD_MAX_RATIO = 2048
+
+
+def _safe_decompress(body: bytes, max_decompressed: int) -> bytes:
+    """Decompress zstd data with ratio-based OOM guard.
+
+    Rejects if compressed_size * max_ratio > max_decompressed.
+
+    Args:
+        body: Raw request body (zstd-compressed or raw).
+        max_decompressed: Max allowed decompressed size in bytes.
+
+    Returns: Decompressed data.
+    """
+    try:
+        est = len(body) * _ZSTD_MAX_RATIO
+        if est > max_decompressed:
+            raise HTTPException(
+                status_code=413,
+                detail=f"Payload too large: {len(body)} compressed would decompress to >{max_decompressed} bytes",
+            )
+        return zstd.decompress(body)
+    except HTTPException:
+        raise
+    except Exception:
+        return body
+
 
 def _ensure_palettes() -> bool:
     """Generate palette files if they don't exist. Returns True if all present."""
@@ -64,10 +91,7 @@ async def upload_tile(request: Request, token_data: dict = Depends(verify_token)
         raise HTTPException(status_code=400, detail="Invalid chunk coords") from err
 
     body = await request.body()
-    try:
-        png_data = zstd.decompress(body)
-    except Exception:
-        png_data = body  # Accept uncompressed
+    png_data = _safe_decompress(body, max_decompressed=10 * 1024 * 1024)
 
     # Store in tile cache
     from map_generator import MapConfig
@@ -99,10 +123,7 @@ async def upload_tiles_batch(request: Request, token_data: dict = Depends(verify
       png_data: size bytes
     """
     body = await request.body()
-    try:
-        data = zstd.decompress(body)
-    except Exception:
-        data = body
+    data = _safe_decompress(body, max_decompressed=100 * 1024 * 1024)
 
     from map_generator import MapConfig
 
