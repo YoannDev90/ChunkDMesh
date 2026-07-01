@@ -139,6 +139,10 @@ def main(bg: bool = False):
     log("🎨", "Downloading palettes for tile generation...")
     provisioner.download_palettes(work_dir)
 
+    # Set up mcmap binary (compile from source or download pre-built)
+    log("🗺️ ", "Setting up mcmap...")
+    provisioner.setup_mcmap(work_dir)
+
     # ── MC lifecycle ────────────────────────────────────────
     lifecycle = MCLifecycle(server_dir, java_bin, jar_path, asset_mgr, seed, mc_version, log_fn=log)
 
@@ -202,12 +206,11 @@ def main(bg: bool = False):
     tiler = None
     from tiler import ClientTiler
 
-    work_dir = Path.home() / ".chunkdmesh" / "work"
     tiler = ClientTiler.from_work_dir(work_dir)
     if tiler:
-        log("🗺️ ", "Client-side tile generation enabled (mcmap found)")
+        log("🗺️ ", "Client-side tile generation: enabled")
     else:
-        log("🗺️ ", "mcmap not found, tiles will be generated server-side")
+        log("🗺️ ", "Client-side tile generation: disabled (mcmap not available)")
 
     batch_count = run_work_loop(
         server_url=SERVER_URL,
