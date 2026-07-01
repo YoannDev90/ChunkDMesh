@@ -19,21 +19,18 @@ class TileCache:
         while len(self._mem_cache) > self._max_mem_size:
             self._mem_cache.popitem(last=False)
 
-    def _tile_key(self, chunk_x: int, chunk_z: int, zoom: int = 5) -> str:
-        return f"z{zoom}_x{chunk_x}_z{chunk_z}"
+    def _tile_path(self, chunk_x: int, chunk_z: int) -> Path:
+        return self.disk_path / f"z5_x{chunk_x}_z{chunk_z}.png"
 
-    def _tile_path(self, chunk_x: int, chunk_z: int, zoom: int = 5) -> Path:
-        return self.disk_path / f"{self._tile_key(chunk_x, chunk_z, zoom)}.png"
-
-    def get_tile_png(self, chunk_x: int, chunk_z: int, zoom: int = 5) -> bytes | None:
-        key = f"tile:{zoom}:{chunk_x}:{chunk_z}"
+    def get_tile_png(self, chunk_x: int, chunk_z: int) -> bytes | None:
+        key = f"tile:{chunk_x}:{chunk_z}"
         if key in self._mem_cache:
             cached = self._mem_cache[key]
             self._mem_cache.move_to_end(key)
             if isinstance(cached, bytes):
                 return cached
 
-        path = self._tile_path(chunk_x, chunk_z, zoom)
+        path = self._tile_path(chunk_x, chunk_z)
         if path.exists():
             data = path.read_bytes()
             self._mem_cache[key] = data
@@ -41,9 +38,9 @@ class TileCache:
             return data
         return None
 
-    def set_tile_png(self, chunk_x: int, chunk_z: int, png_data: bytes, zoom: int = 5):
-        key = f"tile:{zoom}:{chunk_x}:{chunk_z}"
-        path = self._tile_path(chunk_x, chunk_z, zoom)
+    def set_tile_png(self, chunk_x: int, chunk_z: int, png_data: bytes):
+        key = f"tile:{chunk_x}:{chunk_z}"
+        path = self._tile_path(chunk_x, chunk_z)
         path.write_bytes(png_data)
         self._mem_cache[key] = png_data
         self._evict()
@@ -80,10 +77,10 @@ class TileCache:
         except Exception as e:
             logger.warning("Failed to write hover cache %s: %s", path, e)
 
-    def invalidate_tile(self, chunk_x: int, chunk_z: int, zoom: int = 5):
-        key = f"tile:{zoom}:{chunk_x}:{chunk_z}"
+    def invalidate_tile(self, chunk_x: int, chunk_z: int):
+        key = f"tile:{chunk_x}:{chunk_z}"
         self._mem_cache.pop(key, None)
-        path = self._tile_path(chunk_x, chunk_z, zoom)
+        path = self._tile_path(chunk_x, chunk_z)
         path.unlink(missing_ok=True)
 
         hover_key = f"hover:{chunk_x}:{chunk_z}"
