@@ -110,7 +110,11 @@ def walk_model_textures(jar: zipfile.ZipFile, model_rel: str, visited: set | Non
         if key not in seen_keys and isinstance(val, str) and not val.startswith("#"):
             tex_paths.append(val)
 
-    resolved = [f"assets/minecraft/textures/{t}.png" for t in tex_paths]
+    resolved = []
+    for t in tex_paths:
+        if t.startswith("minecraft:"):
+            t = t.removeprefix("minecraft:")
+        resolved.append(f"assets/minecraft/textures/{t}.png")
 
     # Walk parent
     parent = model.get("parent")
