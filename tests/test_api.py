@@ -2,18 +2,13 @@
 
 import pytest
 
-try:
-    from fastapi.testclient import TestClient
+pytest.importorskip("fastapi.testclient")
 
-    _HAS_FASTAPI = True
-except ImportError:
-    _HAS_FASTAPI = False
+from fastapi.testclient import TestClient
 
 
 @pytest.fixture
 def client():
-    if not _HAS_FASTAPI:
-        pytest.skip("fastapi not installed in test env")
     from api import app
 
     return TestClient(app)
@@ -35,7 +30,7 @@ class TestRootEndpoint:
 
 class TestPathTraversal:
     def test_download_rejects_traversal(self, client):
-        resp = client.get("/admin/download/../../etc/passwd", headers={"Authorization": "Bearer fake"})
+        resp = client.get("/admin/download/%2e%2e/%2e%2e/etc/passwd", headers={"Authorization": "Bearer fake"})
         assert resp.status_code in (400, 401, 404)
 
     def test_upload_rejects_traversal(self, client):
