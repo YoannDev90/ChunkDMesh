@@ -1,6 +1,11 @@
 use crate::colors::Rgb;
 
-#[derive(Debug, Clone)]
+/// Shading parameters for terrain lighting.
+///
+/// Controls light direction, height exaggeration for normals,
+/// shadow strength, and cave darkness factor.
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(default)]
 pub struct ShadingConfig {
     pub light_direction: (f32, f32, f32),
     pub height_exaggeration: f32,
@@ -9,6 +14,7 @@ pub struct ShadingConfig {
 }
 
 impl Default for ShadingConfig {
+    /// Default shading: NW light, 2x height exaggeration, 70% shadow strength, 60% cave darkness.
     fn default() -> Self {
         ShadingConfig {
             light_direction: (-0.5, 0.7, 0.5),
@@ -81,6 +87,10 @@ fn height_at(
     heights[x.max(0).min(15) as usize][z.max(0).min(15) as usize]
 }
 
+/// Compute surface normals from height grid.
+///
+/// Uses central differences with optional neighbor edge data
+/// for seamless chunk borders.
 pub fn compute_normals(
     heights: &[[f32; 16]; 16],
     exaggeration: f32,
@@ -109,6 +119,10 @@ pub fn compute_normals(
     normals
 }
 
+/// Apply diffuse lighting and cave-darkening to color grid.
+///
+/// Uses dot product between surface normals and light direction.
+/// Cave columns get additional darkness.
 pub fn apply_shading(
     colors: &[[Rgb; 16]; 16],
     normals: &[[(f32, f32, f32); 16]; 16],

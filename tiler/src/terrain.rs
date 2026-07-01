@@ -1,6 +1,10 @@
+use crate::colors::BlockCategories;
 use crate::nbt_parser::{BlockEntry, ChunkRawData};
 use std::collections::HashMap;
 
+/// Extracted surface terrain for a 16×16 chunk column.
+///
+/// Includes height map, surface block IDs/names, cave flags, biomes, and height range.
 #[derive(Debug, Clone)]
 pub struct TerrainData {
     pub heights: [[f32; 16]; 16],
@@ -12,87 +16,16 @@ pub struct TerrainData {
     pub max_height: i16,
 }
 
+/// Create a 16x16 grid of empty `String`s.
 fn empty_string_grid() -> [[String; 16]; 16] {
     std::array::from_fn(|_| std::array::from_fn(|_| String::new()))
 }
 
-// Block IDs for common blocks
-pub const BLOCK_AIR: u16 = 0;
-pub const BLOCK_STONE: u16 = 1;
-pub const BLOCK_GRASS: u16 = 2;
-pub const BLOCK_DIRT: u16 = 3;
-pub const BLOCK_WATER: u16 = 9;
-pub const BLOCK_FLOWING_WATER: u16 = 208;
-
-// Block name categorization
-fn is_water(name: &str) -> bool {
-    name == "minecraft:water" || name == "minecraft:flowing_water" || name == "minecraft:lava" || name == "minecraft:flowing_lava"
-}
-
-fn is_air(name: &str) -> bool {
-    name == "minecraft:air" || name == "minecraft:cave_air" || name == "minecraft:void_air"
-}
-
-fn is_plant(name: &str) -> bool {
-    name.starts_with("minecraft:grass")
-        || name.starts_with("minecraft:tall_grass")
-        || name == "minecraft:fern"
-        || name == "minecraft:large_fern"
-        || name.starts_with("minecraft:dead_bush")
-        || name.starts_with("minecraft:seagrass")
-        || name.starts_with("minecraft:tall_seagrass")
-        || name.ends_with("_flower")
-        || name.ends_with("_petals")
-        || name.contains("_mushroom")
-        || name.contains("_sapling")
-        || name.contains("_coral")
-        || name.contains("_kelp")
-        || name.contains("_vine")
-        || name.contains("_snow")
-        || name.contains("_torch")
-        || name.contains("_button")
-        || name.contains("_pressure_plate")
-        || name.contains("_sign")
-        || name.contains("_hanging_sign")
-        || name.contains("_candle")
-        || name.contains("_carpet")
-        || name.contains("_wool")
-        || name.contains("_bed")
-        || name.contains("_door")
-        || name.contains("_trapdoor")
-        || name.contains("_fence")
-        || name.contains("_fence_gate")
-        || name.contains("_wall")
-        || name.contains("_slab")
-        || name.contains("_stairs")
-        || name.contains("_rail")
-        || name.contains("_lever")
-        || name.contains("_lily")
-        || name.contains("_piston")
-        || name.contains("_lamp")
-        || name.contains("_lantern")
-        || name.contains("_chain")
-        || name.contains("_bars")
-        || name.contains("_rod")
-        || name.contains("_portal")
-        || name.contains("_spawner")
-        || name.contains("_stem")
-        || name.contains("_crop")
-        || name.contains("_plant")
-        || name.contains("_podzol")
-        || name.contains("_mycelium")
-        || name.contains("_path")
-        || name.contains("_concrete_powder")
-        || name.contains("_terracotta")
-        || name.contains("_glass")
-        || name.contains("_leaves")
-        || name.contains("_log")
-        || name.contains("_wood")
-        || name.contains("_planks")
-        || name.contains("_button")
-}
-
-pub fn extract_terrain(chunk: &ChunkRawData) -> TerrainData {
+/// Extract surface terrain data from a raw chunk.
+///
+/// Finds highest non-air, non-plant, non-water block per column (using `categories`).
+/// Detects caves (≥4 consecutive air below surface), builds biome map.
+pub fn extract_terrain(chunk: &ChunkRawData, categories: &BlockCategories) -> TerrainData {
     // Build Y-sorted index of blocks per column (x, z)
     // First, organize blocks by column
     let mut columns: HashMap<(u8, u8), Vec<&BlockEntry>> = HashMap::new();
@@ -139,32 +72,34 @@ pub fn extract_terrain(chunk: &ChunkRawData) -> TerrainData {
         for z in 0..16u8 {
             let col = columns.get(&(x, z));
             if let Some(blocks) = col {
-                // Find surface (highest non-air, non-plant block)
-                // Water is a valid surface (oceans, rivers) and has higher priority
-                // than any block below it.
+                // Find surface (highest non-air, non-plant, non-water block).
+                // Water is skipped so the block below (sand, gravel, stone) is the
+                // surface, giving visible underwater topography with a blue overlay.
                 for block in blocks.iter() {
-                    if is_air(&block.block_name) || is_plant(&block.block_name) {
+                    let bx = x as usize;
+                    let bz = z as usize;
+                    if categories.water.contains(&block.block_name) || categories.air.contains(&block.block_name) || categories.plant.contains(&block.block_name) {
                         continue;
                     }
 
-                    // This is the surface block
                     let id = block_ids.get(block.block_name.as_str()).copied().unwrap_or(0);
-                    surface_blocks[x as usize][z as usize] = id;
-                    surface_block_names[x as usize][z as usize] = block.block_name.clone();
-                    heights[x as usize][z as usize] = block.y as f32;
+                    surface_blocks[bx][bz] = id;
+                    surface_block_names[bx][bz] = block.block_name.clone();
+                    heights[bx][bz] = block.y as f32;
 
-                    // Cave detection: check if there are >4 air blocks below surface
+                    // Cave detection: check for >4 consecutive air blocks below surface
+                    // Iterate bottom-up to correctly count consecutive air below surface
                     let mut air_count = 0i32;
-                    for b in blocks.iter() {
+                    for b in blocks.iter().rev() {
                         if b.local_x == x && b.local_z == z && b.y < block.y {
-                            if is_air(&b.block_name) {
+                            if categories.air.contains(&b.block_name) {
                                 air_count += 1;
+                                if air_count > 4 {
+                                    has_caves[bx][bz] = true;
+                                    break;
+                                }
                             } else {
                                 air_count = 0;
-                            }
-                            if air_count > 4 {
-                                has_caves[x as usize][z as usize] = true;
-                                break;
                             }
                         }
                     }
@@ -174,8 +109,8 @@ pub fn extract_terrain(chunk: &ChunkRawData) -> TerrainData {
                 // If no surface found (all water/air), try water
                 if surface_blocks[x as usize][z as usize] == 0 {
                     for block in blocks.iter() {
-                        if is_water(&block.block_name) {
-                            let id = block_ids.get(block.block_name.as_str()).copied().unwrap_or(BLOCK_WATER);
+                        if categories.water.contains(&block.block_name) {
+                            let id = block_ids.get(block.block_name.as_str()).copied().unwrap_or(9);
                             surface_blocks[x as usize][z as usize] = id;
                             surface_block_names[x as usize][z as usize] = block.block_name.clone();
                             heights[x as usize][z as usize] = block.y as f32;
@@ -185,11 +120,10 @@ pub fn extract_terrain(chunk: &ChunkRawData) -> TerrainData {
                 }
             }
 
-            // Get biome for this column
-            surface_biomes[x as usize][z as usize] = biome_map
-                .get(&(x, z))
-                .cloned()
-                .unwrap_or_else(|| "minecraft:plains".to_string());
+            // Get biome for this column (empty = no tint)
+            if let Some(biome) = biome_map.get(&(x, z)) {
+                surface_biomes[x as usize][z as usize] = biome.clone();
+            }
         }
     }
 

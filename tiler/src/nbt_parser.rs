@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::io::{Cursor, Read};
 use std::path::Path;
 
+/// Single block entry with position and block name.
 #[derive(Debug, Clone)]
 pub struct BlockEntry {
     pub local_x: u8,
@@ -12,6 +13,7 @@ pub struct BlockEntry {
     pub block_name: String,
 }
 
+/// Single biome assignment at a column position.
 #[derive(Debug, Clone)]
 pub struct BiomeEntry {
     pub local_x: u8,
@@ -19,6 +21,7 @@ pub struct BiomeEntry {
     pub biome_name: String,
 }
 
+/// Raw parsed chunk data: block entries, biome entries, version.
 #[derive(Debug, Clone)]
 pub struct ChunkRawData {
     pub chunk_x: i32,
@@ -29,15 +32,21 @@ pub struct ChunkRawData {
     pub incomplete: bool,
 }
 
+/// Errors during chunk parsing — IO, NBT format, or missing data.
 #[derive(Debug)]
 pub enum ParserError {
+    /// IO error reading file.
     Io(String),
+    /// NBT decode error.
     Nbt(String),
+    /// Chunk data invalid or not found.
     InvalidChunk(String),
+    /// Chunk has no section data.
     MissingSection,
 }
 
 impl std::fmt::Display for ParserError {
+    /// Human-readable error description.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ParserError::Io(s) => write!(f, "IO error: {}", s),
@@ -101,7 +110,13 @@ impl<'a> NbtReader<'a> {
         String::from_utf8(buf).map_err(|e| ParserError::Nbt(format!("UTF-8: {}", e)))
     }
 
-    #[allow(dead_code)]
+    fn check_len(len: i32) -> Result<usize, ParserError> {
+        if len < 0 {
+            return Err(ParserError::Nbt(format!("Negative array length: {}", len)));
+        }
+        Ok(len as usize)
+    }
+
     fn skip_payload(&mut self, tag_type: u8) -> Result<(), ParserError> {
         match tag_type {
             TAG_BYTE => { self.read_byte()?; }
@@ -111,8 +126,8 @@ impl<'a> NbtReader<'a> {
             TAG_FLOAT => { self.cursor.read_f32::<BigEndian>().map_err(|e| ParserError::Nbt(e.to_string()))?; }
             TAG_DOUBLE => { self.cursor.read_f64::<BigEndian>().map_err(|e| ParserError::Nbt(e.to_string()))?; }
             TAG_BYTE_ARRAY => {
-                let len = self.read_int()?;
-                let mut buf = vec![0u8; len as usize];
+                let len = Self::check_len(self.read_int()?)?;
+                let mut buf = vec![0u8; len];
                 self.cursor.read_exact(&mut buf).map_err(|e| ParserError::Nbt(e.to_string()))?;
             }
             TAG_STRING => { self.read_string()?; }
@@ -132,13 +147,13 @@ impl<'a> NbtReader<'a> {
                 }
             }
             TAG_INT_ARRAY => {
-                let len = self.read_int()?;
-                let mut buf = vec![0u8; (len as usize) * 4];
+                let len = Self::check_len(self.read_int()?)?;
+                let mut buf = vec![0u8; len * 4];
                 self.cursor.read_exact(&mut buf).map_err(|e| ParserError::Nbt(e.to_string()))?;
             }
             TAG_LONG_ARRAY => {
-                let len = self.read_int()?;
-                let mut buf = vec![0u8; (len as usize) * 8];
+                let len = Self::check_len(self.read_int()?)?;
+                let mut buf = vec![0u8; len * 8];
                 self.cursor.read_exact(&mut buf).map_err(|e| ParserError::Nbt(e.to_string()))?;
             }
             _ => return Err(ParserError::Nbt(format!("Unknown tag type: {}", tag_type))),
@@ -175,7 +190,7 @@ impl<'a> NbtReader<'a> {
                 Ok(NbtValue::Double(v))
             }
             TAG_BYTE_ARRAY => {
-                let len = self.read_int()? as usize;
+                let len = Self::check_len(self.read_int()?)?;
                 let mut buf = vec![0u8; len];
                 self.cursor.read_exact(&mut buf).map_err(|e| ParserError::Nbt(e.to_string()))?;
                 Ok(NbtValue::ByteArray(buf))
@@ -184,6 +199,9 @@ impl<'a> NbtReader<'a> {
             TAG_LIST => {
                 let elem_type = self.read_ubyte()?;
                 let len = self.read_int()?;
+                if len < 0 {
+                    return Err(ParserError::Nbt(format!("Negative list length: {}", len)));
+                }
                 let mut items = Vec::with_capacity(len as usize);
                 for _ in 0..len {
                     items.push(self.read_payload(elem_type)?);
@@ -192,24 +210,24 @@ impl<'a> NbtReader<'a> {
             }
             TAG_COMPOUND => Ok(NbtValue::Compound(self.read_compound()?)),
             TAG_INT_ARRAY => {
-                let len = self.read_int()? as usize;
+                let len = Self::check_len(self.read_int()?)?;
                 let mut buf = vec![0u8; len * 4];
                 self.cursor.read_exact(&mut buf).map_err(|e| ParserError::Nbt(e.to_string()))?;
                 let mut ints = Vec::with_capacity(len);
                 let mut c = Cursor::new(&buf);
                 for _ in 0..len {
-                    ints.push(c.read_i32::<BigEndian>().unwrap());
+                    ints.push(c.read_i32::<BigEndian>().map_err(|e| ParserError::Nbt(e.to_string()))?);
                 }
                 Ok(NbtValue::IntArray(ints))
             }
             TAG_LONG_ARRAY => {
-                let len = self.read_int()? as usize;
+                let len = Self::check_len(self.read_int()?)?;
                 let mut buf = vec![0u8; len * 8];
                 self.cursor.read_exact(&mut buf).map_err(|e| ParserError::Nbt(e.to_string()))?;
                 let mut longs = Vec::with_capacity(len);
                 let mut c = Cursor::new(&buf);
                 for _ in 0..len {
-                    longs.push(c.read_i64::<BigEndian>().unwrap());
+                    longs.push(c.read_i64::<BigEndian>().map_err(|e| ParserError::Nbt(e.to_string()))?);
                 }
                 Ok(NbtValue::LongArray(longs))
             }
@@ -227,6 +245,9 @@ impl<'a> NbtReader<'a> {
     }
 }
 
+/// Typed NBT tag value.
+///
+/// Mirrors Minecraft's named binary tag types.
 #[derive(Debug, Clone)]
 pub enum NbtValue {
     Byte(i8),
@@ -328,7 +349,7 @@ pub fn read_chunk(path: &Path, chunk_x: i32, chunk_z: i32) -> Result<ChunkRawDat
 
     let chunk_len = {
         let mut c = Cursor::new(&data[file_offset..file_offset + 4]);
-        c.read_u32::<BigEndian>().unwrap() as usize
+        c.read_u32::<BigEndian>().map_err(|e| ParserError::Nbt(e.to_string()))? as usize
     };
 
     if file_offset + 5 + chunk_len > data.len() {
@@ -358,6 +379,9 @@ pub fn read_chunk(path: &Path, chunk_x: i32, chunk_z: i32) -> Result<ChunkRawDat
     parse_chunk_nbt(&decompressed, chunk_x, chunk_z)
 }
 
+/// Read all chunks from a region (`.mca`) file.
+///
+/// Iterates 1024 chunk slots, decompresses and parses each found chunk.
 pub fn read_region_file(path: &Path) -> Result<Vec<ChunkRawData>, ParserError> {
     let data = std::fs::read(path).map_err(|e| ParserError::Io(e.to_string()))?;
     if data.len() < 8192 {
@@ -391,9 +415,9 @@ pub fn read_region_file(path: &Path) -> Result<Vec<ChunkRawData>, ParserError> {
             continue;
         }
 
-        let chunk_len = {
-            let mut c = Cursor::new(&data[file_offset..file_offset + 4]);
-            c.read_u32::<BigEndian>().unwrap() as usize
+        let chunk_len = match Cursor::new(&data[file_offset..file_offset + 4]).read_u32::<BigEndian>() {
+            Ok(len) => len as usize,
+            Err(_) => continue,
         };
 
         if file_offset + 5 + chunk_len > data.len() {
@@ -432,6 +456,9 @@ pub fn read_region_file(path: &Path) -> Result<Vec<ChunkRawData>, ParserError> {
     Ok(chunks)
 }
 
+/// Parse decompressed NBT data into `ChunkRawData`.
+///
+/// Extracts blocks, biomes, and data version from section list.
 fn parse_chunk_nbt(data: &[u8], chunk_x: i32, chunk_z: i32) -> Result<ChunkRawData, ParserError> {
     let mut reader = NbtReader::new(data);
     let root = reader.read_root()?;

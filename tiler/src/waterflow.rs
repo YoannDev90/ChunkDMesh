@@ -1,12 +1,15 @@
+use crate::colors::BlockCategories;
 use crate::nbt_parser::ChunkRawData;
 use crate::terrain::TerrainData;
 
+/// Connected river segment — ordered list of surface points.
 #[derive(Debug, Clone)]
 pub struct RiverSegment {
     pub points: Vec<(u8, u8)>,
     pub length: usize,
 }
 
+/// Waterfall feature — position and height drop.
 #[derive(Debug, Clone, Copy)]
 pub struct Waterfall {
     pub local_x: u8,
@@ -14,6 +17,9 @@ pub struct Waterfall {
     pub height_drop: f32,
 }
 
+/// Water analysis results for a chunk.
+///
+/// Includes river segments, waterfall locations, and binary water map.
 #[derive(Debug, Clone)]
 pub struct WaterflowData {
     pub rivers: Vec<RiverSegment>,
@@ -21,12 +27,13 @@ pub struct WaterflowData {
     pub water_map: [[bool; 16]; 16],
 }
 
-pub fn find_water(chunk: &ChunkRawData) -> WaterflowData {
+/// Build water map for chunk: detect water blocks, rivers, and waterfalls.
+pub fn find_water(chunk: &ChunkRawData, categories: &BlockCategories) -> WaterflowData {
     let mut water_map = [[false; 16]; 16];
     let mut water_heights: [[f32; 16]; 16] = [[-100.0; 16]; 16];
 
     for block in &chunk.blocks {
-        if block.block_name == "minecraft:water" || block.block_name == "minecraft:flowing_water" {
+        if categories.water.contains(&block.block_name) {
             let x = block.local_x as usize;
             let z = block.local_z as usize;
             if block.y as f32 > water_heights[x][z] {
@@ -46,6 +53,7 @@ pub fn find_water(chunk: &ChunkRawData) -> WaterflowData {
     }
 }
 
+/// Find connected river segments ≥`min_length` cells.
 fn find_river_segments(
     water_map: &[[bool; 16]; 16],
     min_length: usize,
@@ -70,6 +78,9 @@ fn find_river_segments(
     rivers
 }
 
+/// Flood-fill connected water cells from start position.
+///
+/// Returns list of (x, z) coordinates in the connected region.
 fn flood_fill(
     water_map: &[[bool; 16]; 16],
     visited: &mut [[bool; 16]; 16],
@@ -103,6 +114,7 @@ fn flood_fill(
     points
 }
 
+/// Internal: find waterfalls from pre-built water map and heights.
 fn find_waterfalls_internal(
     water_map: &[[bool; 16]; 16],
     water_heights: &[[f32; 16]; 16],
@@ -142,16 +154,20 @@ fn find_waterfalls_internal(
     waterfalls
 }
 
+/// Find waterfall features in chunk by detecting water height drops.
+///
+/// Scans water blocks for neighbors >`min_drop` below.
 pub fn find_waterfalls(
     chunk: &ChunkRawData,
     _terrain: &TerrainData,
+    categories: &BlockCategories,
     min_drop: f32,
 ) -> Vec<Waterfall> {
     let mut water_heights: [[f32; 16]; 16] = [[-100.0; 16]; 16];
     let mut water_map = [[false; 16]; 16];
 
     for block in &chunk.blocks {
-        if block.block_name == "minecraft:water" || block.block_name == "minecraft:flowing_water" {
+        if categories.water.contains(&block.block_name) {
             let x = block.local_x as usize;
             let z = block.local_z as usize;
             if block.y as f32 > water_heights[x][z] {

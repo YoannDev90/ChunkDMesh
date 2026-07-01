@@ -1,36 +1,56 @@
-use crate::colors::{BlockPalette, BiomePalette, Rgb};
+use crate::colors::{BlockCategories, BlockPalette, BiomePalette, Rgb};
 use crate::nbt_parser::ChunkRawData;
 use crate::shading::{apply_shading, compute_normals, EdgeHeights, ShadingConfig};
 use crate::terrain::extract_terrain;
 use crate::waterflow::{find_water, WaterflowData};
 use image::{ImageBuffer, RgbImage};
 
+/// Render configuration: shading, biome tint, water overlay, and waterflow.
 pub struct RenderConfig {
     pub enable_shading: bool,
     pub enable_biome_tint: bool,
     pub enable_waterflow: bool,
     pub shading: ShadingConfig,
+    pub water_overlay_color: Rgb,
+    pub water_overlay_blend: f32,
 }
 
 impl Default for RenderConfig {
+    /// Default render config: shading/biome/waterflow on, blue water overlay at 35%.
     fn default() -> Self {
         RenderConfig {
             enable_shading: true,
             enable_biome_tint: true,
             enable_waterflow: true,
             shading: ShadingConfig::default(),
+            water_overlay_color: Rgb::new(50, 120, 220),
+            water_overlay_blend: 0.35,
         }
     }
 }
 
+impl From<&crate::config::TilerConfig> for RenderConfig {
+    /// Convert `TilerConfig` to `RenderConfig`.
+    fn from(cfg: &crate::config::TilerConfig) -> Self {
+        let c = cfg.water_overlay_color;
+        RenderConfig {
+            enable_shading: cfg.enable_shading,
+            enable_biome_tint: cfg.enable_biome_tint,
+            enable_waterflow: cfg.enable_waterflow,
+            shading: cfg.shading.clone(),
+            water_overlay_color: Rgb::new(c[0], c[1], c[2]),
+            water_overlay_blend: cfg.water_overlay_blend,
+        }
+    }
+}
+
+/// Render result: PNG image bytes and terrain data JSON.
 pub struct RenderOutput {
     pub png_data: Vec<u8>,
     pub terrain_json: String,
 }
 
-/// Water color: a visible semi-transparent blue
-const WATER_COLOR: Rgb = Rgb { r: 40, g: 100, b: 200 };
-
+/// Compute final surface colors: block color + biome tint + water overlay.
 fn build_surface_colors(
     terrain: &crate::terrain::TerrainData,
     waterflow: &WaterflowData,
@@ -44,21 +64,10 @@ fn build_surface_colors(
     for x in 0..16 {
         for z in 0..16 {
             let block_name = &terrain.surface_block_names[x][z];
-            let is_water_block = block_name == "minecraft:water"
-                || block_name == "minecraft:flowing_water"
-                || block_name == "minecraft:lava"
-                || block_name == "minecraft:flowing_lava";
+            let mut color = block_palette.get_block_color(block_name);
 
-            let mut color = if is_water_block {
-                // Water blocks: use a dedicated blue color (not palette lookup)
-                WATER_COLOR
-            } else {
-                block_palette.get_block_color(block_name)
-            };
-
-            // Biome tint (only for non-water blocks)
-            if !is_water_block
-                && config.enable_biome_tint
+            // Biome tint (only for non-water blocks; water overlay applied after)
+            if config.enable_biome_tint
                 && !terrain.surface_biomes[x][z].is_empty()
                 && biome_tint_blocks.contains(block_name)
             {
@@ -66,9 +75,10 @@ fn build_surface_colors(
                 color = color.blend(&biome_color, 0.35);
             }
 
-            // Water flow overlay: darken adjacent pixels near water edges
-            if !is_water_block && waterflow.water_map[x][z] {
-                color = color.blend(&WATER_COLOR, 0.2);
+            // Water overlay: blue tint on any column containing water.
+            // Shows underwater terrain through the tint, revealing topography.
+            if waterflow.water_map[x][z] && config.enable_waterflow {
+                color = color.blend(&config.water_overlay_color, config.water_overlay_blend);
             }
 
             colors[x][z] = color;
@@ -78,26 +88,33 @@ fn build_surface_colors(
     colors
 }
 
+/// Render single chunk to PNG and JSON (no edge neighbor data).
 pub fn render_chunk(
     chunk: &ChunkRawData,
     config: &RenderConfig,
     block_palette: &BlockPalette,
     biome_palette: &BiomePalette,
     biome_tint_blocks: &crate::colors::BiomeTintBlocks,
+    categories: &BlockCategories,
 ) -> RenderOutput {
-    render_chunk_with_edges(chunk, config, block_palette, biome_palette, biome_tint_blocks, None)
+    render_chunk_with_edges(chunk, config, block_palette, biome_palette, biome_tint_blocks, categories, None)
 }
 
+/// Render chunk with optional neighbor edge heights for seamless borders.
+///
+/// Extracts terrain, computes waterflow, builds surface colors,
+/// applies shading, produces PNG and terrain JSON.
 pub fn render_chunk_with_edges(
     chunk: &ChunkRawData,
     config: &RenderConfig,
     block_palette: &BlockPalette,
     biome_palette: &BiomePalette,
     biome_tint_blocks: &crate::colors::BiomeTintBlocks,
+    categories: &BlockCategories,
     edge_heights: Option<&EdgeHeights>,
 ) -> RenderOutput {
-    let terrain = extract_terrain(chunk);
-    let waterflow = find_water(chunk);
+    let terrain = extract_terrain(chunk, categories);
+    let waterflow = find_water(chunk, categories);
 
     let mut colors = build_surface_colors(&terrain, &waterflow, block_palette, biome_palette, biome_tint_blocks, config);
 
@@ -117,6 +134,7 @@ pub fn render_chunk_with_edges(
     }
 }
 
+/// Scale 16×16 color grid to 256×256 PNG image bytes.
 fn render_to_png(colors: &[[Rgb; 16]; 16]) -> Vec<u8> {
     let scale: u32 = 16;
     let size = 16 * scale;
@@ -141,10 +159,11 @@ fn render_to_png(colors: &[[Rgb; 16]; 16]) -> Vec<u8> {
 
     let mut buf = Vec::new();
     img.write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::Png)
-        .expect("Failed to encode PNG");
+        .expect("PNG encode failed");
     buf
 }
 
+/// Build JSON string with terrain heights, block IDs/names, biomes, caves, water data.
 fn build_terrain_json(
     terrain: &crate::terrain::TerrainData,
     waterflow: &WaterflowData,
@@ -189,12 +208,17 @@ fn build_terrain_json(
     }).to_string()
 }
 
+/// Render multiple chunks with neighbor-aware edge blending.
+///
+/// Extracts terrain, builds edge heights from adjacent chunks,
+/// renders in parallel using rayon.
 pub fn render_region_chunks(
     chunks: &[ChunkRawData],
     config: &RenderConfig,
     block_palette: &BlockPalette,
     biome_palette: &BiomePalette,
     biome_tint_blocks: &crate::colors::BiomeTintBlocks,
+    categories: &BlockCategories,
 ) -> Vec<(i32, i32, RenderOutput)> {
     use rayon::prelude::*;
     use std::collections::HashMap;
@@ -206,7 +230,7 @@ pub fn render_region_chunks(
     }
 
     // Pre-extract all terrain height maps
-    let terrains: Vec<_> = chunks.iter().map(|c| extract_terrain(c)).collect();
+    let terrains: Vec<_> = chunks.iter().map(|c| extract_terrain(c, categories)).collect();
 
     chunks.par_iter().enumerate().map(|(_idx, chunk)| {
         // Build edge heights from neighboring chunks
@@ -235,7 +259,7 @@ pub fn render_region_chunks(
         });
 
         let edge = EdgeHeights { left, right, top, bottom };
-        let output = render_chunk_with_edges(chunk, config, block_palette, biome_palette, biome_tint_blocks, Some(&edge));
+        let output = render_chunk_with_edges(chunk, config, block_palette, biome_palette, biome_tint_blocks, categories, Some(&edge));
         (chunk.chunk_x, chunk.chunk_z, output)
     }).collect()
 }
