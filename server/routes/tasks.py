@@ -186,7 +186,7 @@ async def upload_chunks(batch_id: int, request: Request, token_data: dict = Depe
     if not client_id:
         raise HTTPException(status_code=400, detail="Invalid token payload")
     chunk_data = await request.body()
-    decompressed_data = _safe_decompress(chunk_data, max_decompressed=200 * 1024 * 1024)
+    decompressed_data = _safe_decompress(chunk_data, max_decompressed=1024 * 1024 * 1024)
     raw_filename = request.headers.get("X-Filename", "r.0.0.mca")
     try:
         filename = sanitize_filename(raw_filename)
