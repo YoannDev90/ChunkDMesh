@@ -49,6 +49,11 @@ async def upload_tile(request: Request, token_data: dict = Depends(verify_token)
     tile_path = cache_dir / f"z5_x{chunk_x}_z{chunk_z}.png"
     tile_path.write_bytes(png_data)
 
+    # Invalidate overview so it gets rebuilt with new tiles
+    from routes.map import invalidate_overview
+
+    invalidate_overview()
+
     logger.info("Tile uploaded: chunk_%d_%d (%d bytes)", chunk_x, chunk_z, len(png_data))
     return JSONResponse({"status": "ok", "chunk_x": chunk_x, "chunk_z": chunk_z, "size": len(png_data)})
 
