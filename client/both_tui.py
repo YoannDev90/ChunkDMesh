@@ -130,6 +130,12 @@ class BothTUI:
         self._running = True
         self._start_key_reader()
         layout = self._build_layout()
+
+        # Disable mouse tracking at terminal level
+        import sys as _sys
+        _sys.stdout.write("\033[?1000l\033[?1002l\033[?1003l\033[?1006l")
+        _sys.stdout.flush()
+
         try:
             with Live(layout, refresh_per_second=4, screen=True, console=self._console):
                 while self._running:
