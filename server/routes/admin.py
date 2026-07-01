@@ -246,3 +246,51 @@ async def download_client(request: Request):
     if not client_archive.exists():
         raise HTTPException(status_code=404, detail="Client archive not found")
     return FileResponse(client_archive, filename="chunkdmesh_client.tar.gz")
+
+
+@router.get("/admin/logs")
+async def get_logs():
+    """Return recent log entries for dashboard."""
+    from state import server_state
+
+    logs = server_state.recent_logs()
+    return JSONResponse({"logs": [{"ts": ts, "icon": icon, "msg": msg} for ts, icon, msg in logs]})
+
+
+@router.get("/admin/requests")
+async def get_requests():
+    """Return recent API requests for dashboard."""
+    from state import server_state
+
+    recent = server_state.recent_requests()
+    return JSONResponse({"requests": [{"ts": ts, "path": path, "status": status} for ts, path, status in recent[-50:]]})
+
+
+@router.get("/admin/project")
+async def get_project():
+    """Return project info: uptime, config, task counts, clients."""
+    import time as _time
+
+    from state import server_state
+
+    stats = server_state.snapshot()
+    uptime = _time.time() - stats.start_time
+    h, rem = divmod(int(uptime), 3600)
+    m, s = divmod(rem, 60)
+
+    return JSONResponse(
+        {
+            "uptime": f"{h:02d}:{m:02d}:{s:02d}",
+            "config": stats.world_config,
+            "clients": stats.active_clients,
+            "tasks": {
+                "pending": stats.pending_tasks,
+                "assigned": stats.assigned_tasks,
+                "working": stats.working_tasks,
+                "completed": stats.completed_tasks,
+                "validated": stats.validated_tasks,
+            },
+            "request_count": stats.request_count,
+            "total_storage_mb": stats.total_storage_mb,
+        }
+    )

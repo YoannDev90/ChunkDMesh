@@ -1,6 +1,7 @@
 """Unified TUI for 'both' mode — 5 panels, no header/footer."""
 
 import re
+import threading
 import time
 import traceback
 from collections import deque
@@ -68,6 +69,7 @@ class BothTUI:
         self._progress_task = self._progress.add_task("Idle", total=100)
         self._cpu_history: deque[float] = deque(maxlen=30)
         self._mem_history: deque[float] = deque(maxlen=30)
+        self._log_offset = 0
 
     def set_client_error(self, error: str):
         """Set client error state for display."""
@@ -77,12 +79,43 @@ class BothTUI:
         """Mark client as done."""
         self._client_done = True
 
+    def _start_key_reader(self):
+        """Start background thread to read arrow keys for log scrolling."""
+
+        def _reader():
+            try:
+                import readchar
+
+                while self._running:
+                    key = readchar.readkey()
+                    all_logs = self.client_tui._log_buffer
+                    from state import server_state
+
+                    server_logs = server_state.recent_logs()
+                    total = len(all_logs) + len(server_logs)
+                    max_off = max(0, total - 10)
+                    with self.client_tui._lock:
+                        if key == readchar.key.UP_ARROW:
+                            self._log_offset = min(self._log_offset + 1, max_off)
+                        elif key == readchar.key.DOWN_ARROW:
+                            self._log_offset = max(self._log_offset - 1, 0)
+                        elif key in (readchar.key.HOME, readchar.key.PAGE_UP):
+                            self._log_offset = max_off
+                        elif key in (readchar.key.END, readchar.key.PAGE_DOWN):
+                            self._log_offset = 0
+            except Exception:
+                pass
+
+        t = threading.Thread(target=_reader, daemon=True)
+        t.start()
+
     def run(self):
         """Start the unified TUI event loop."""
         self._running = True
+        self._start_key_reader()
         layout = self._build_layout()
         try:
-            with Live(layout, refresh_per_second=4, screen=True, console=self._console):
+            with Live(layout, refresh_per_second=4, screen=True, console=self._console, mouse=False):
                 while self._running:
                     self._safe_update(layout, "body", self._render_checklist, "left", "checklist")
                     self._safe_update(layout, "body", self._render_resources, "left", "resources")
@@ -366,7 +399,7 @@ class BothTUI:
     # ── Right: Live Logs ──────────────────────────────────────
 
     def _render_logs(self) -> Panel:
-        """Render merged server and client log entries."""
+        """Render merged server and client log entries with scroll support."""
         from state import server_state
 
         logs = server_state.recent_logs()
@@ -377,22 +410,32 @@ class BothTUI:
 
         # Merge: server logs first, then client logs
         all_lines = []
-        for ts, icon, msg in logs[-6:]:
+        for ts, icon, msg in logs:
             all_lines.append((ts, icon, msg))
-        for ts, icon, msg in client_lines[-4:]:
+        for ts, icon, msg in client_lines:
             all_lines.append((ts, icon, msg))
 
-        # Keep last 10
-        all_lines = all_lines[-10:]
+        # Apply scroll offset
+        visible = 10
+        with self.client_tui._lock:
+            offset = self._log_offset
+        if offset > 0:
+            end = len(all_lines) - offset
+            start = max(0, end - visible)
+            shown = all_lines[start:end]
+            scroll_info = f" ↑{offset}"
+        else:
+            shown = all_lines[-visible:]
+            scroll_info = ""
 
         table = Table(box=None, padding=(0, 1), show_header=False, expand=True)
         table.add_column("Time", style="dim", width=8)
         table.add_column("Icon", width=2)
         table.add_column("Message", overflow="ellipsis")
 
-        for ts, icon, msg in all_lines:
+        for ts, icon, msg in shown:
             table.add_row(ts, icon, msg[:100])
-        if not all_lines:
+        if not shown:
             table.add_row("", "", Text("Waiting for activity…", style="dim italic"))
 
-        return Panel(table, title=" LOGS ", border_style="magenta")
+        return Panel(table, title=f" LOGS{scroll_info} ", border_style="magenta")

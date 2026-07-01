@@ -3,65 +3,244 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ChunkDMesh - Admin Dashboard</title>
-    <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+    <title>ChunkDMesh</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f0f0f; color: #e0e0e0; padding: 20px; }
-        h1 { color: #4ade80; margin-bottom: 20px; font-size: 1.5rem; }
-        .stats { display: flex; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
-        .stat-card { background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 16px 24px; min-width: 140px; }
-        .stat-card .label { font-size: 0.75rem; color: #888; text-transform: uppercase; }
-        .stat-card .value { font-size: 1.5rem; font-weight: bold; margin-top: 4px; }
-        .stat-card .value.green { color: #4ade80; }
-        .stat-card .value.blue { color: #60a5fa; }
-        .stat-card .value.yellow { color: #facc15; }
-        .stat-card .value.red { color: #f87171; }
-        .heatmap-container { background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 16px; overflow: auto; }
-        .heatmap { display: grid; gap: 2px; }
-        .cell { width: 12px; height: 12px; border-radius: 2px; }
-        .cell.pending { background: #374151; }
-        .cell.assigned { background: #facc15; }
-        .cell.working { background: #60a5fa; }
-        .cell.completed { background: #4ade80; }
-        .cell.validated { background: #22c55e; }
-        .cell.hash_error { background: #ef4444; }
-        .legend { display: flex; gap: 16px; margin-top: 12px; font-size: 0.75rem; }
-        .legend-item { display: flex; align-items: center; gap: 4px; }
-        .legend-dot { width: 10px; height: 10px; border-radius: 2px; }
-        .actions { margin-top: 24px; display: flex; gap: 12px; }
-        .btn { padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-size: 0.875rem; font-weight: 500; }
-        .btn-green { background: #4ade80; color: #000; }
-        .btn-blue { background: #60a5fa; color: #000; }
-        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-        .status-msg { margin-top: 12px; font-size: 0.875rem; color: #888; }
+        :root {
+            --bg: #0a0a0a; --panel: #111; --border: #222;
+            --text: #ddd; --dim: #666; --green: #4ade80; --blue: #60a5fa;
+            --yellow: #facc15; --red: #f87171; --cyan: #22d3ee;
+            --magenta: #e879f9;
+        }
+        body { font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace; background: var(--bg); color: var(--text); font-size: 13px; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: auto auto 1fr auto; gap: 1px; height: 100vh; background: var(--border); }
+        .panel { background: var(--panel); padding: 12px 16px; overflow: hidden; }
+        .panel-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: var(--dim); margin-bottom: 10px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+        .full { grid-column: 1 / -1; }
+
+        /* Project */
+        .project-grid { display: grid; grid-template-columns: auto 1fr; gap: 4px 16px; }
+        .project-grid .label { color: var(--dim); }
+        .project-grid .val { color: var(--cyan); }
+        .project-grid .val.bold { color: #fff; font-weight: 700; }
+        .progress-bar { height: 6px; background: var(--border); border-radius: 3px; margin-top: 8px; overflow: hidden; }
+        .progress-fill { height: 100%; background: var(--green); border-radius: 3px; transition: width 0.5s; }
+        .progress-label { font-size: 11px; color: var(--dim); margin-top: 4px; }
+
+        /* Heatmap */
+        .heatmap-wrap { overflow: auto; max-height: 200px; }
+        .heatmap { display: inline-grid; gap: 2px; }
+        .cell { width: 14px; height: 14px; border-radius: 2px; cursor: default; }
+        .cell.pending { background: #1e293b; }
+        .cell.assigned { background: var(--yellow); }
+        .cell.working { background: var(--blue); }
+        .cell.completed { background: var(--green); }
+        .cell.validated { background: #16a34a; }
+        .cell.hash_error { background: var(--red); }
+        .legend { display: flex; gap: 14px; margin-top: 8px; font-size: 11px; color: var(--dim); }
+        .legend-dot { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
+
+        /* Requests */
+        .req-table { width: 100%; border-collapse: collapse; }
+        .req-table td { padding: 3px 8px; white-space: nowrap; }
+        .req-table .time { color: var(--dim); width: 70px; }
+        .req-table .path { color: var(--cyan); }
+        .req-table .status { text-align: right; font-weight: 600; }
+        .s-2xx { color: var(--green); }
+        .s-3xx { color: var(--yellow); }
+        .s-4xx { color: var(--red); }
+        .s-5xx { color: var(--magenta); }
+
+        /* Logs */
+        .logs-scroll { overflow-y: auto; max-height: 100%; }
+        .log-line { display: flex; gap: 8px; padding: 2px 0; }
+        .log-ts { color: var(--dim); flex-shrink: 0; width: 65px; }
+        .log-icon { flex-shrink: 0; width: 18px; text-align: center; }
+        .log-msg { color: var(--text); word-break: break-word; }
+
+        /* Actions */
+        .actions { display: flex; gap: 10px; align-items: center; }
+        .btn { padding: 6px 14px; border: 1px solid var(--border); border-radius: 4px; cursor: pointer; font-size: 12px; font-family: inherit; background: var(--panel); color: var(--text); transition: all 0.15s; }
+        .btn:hover { border-color: var(--green); color: var(--green); }
+        .btn:active { background: var(--green); color: #000; }
+        .btn:disabled { opacity: 0.3; cursor: not-allowed; }
+        .status-line { font-size: 11px; color: var(--dim); margin-left: auto; }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: var(--bg); }
+        ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
     </style>
 </head>
 <body>
-    <h1>ChunkDMesh Dashboard</h1>
-
-    <div class="stats" id="stats" hx-get="/admin/progress" hx-trigger="load, every 5s" hx-swap="innerHTML">
-        <div class="stat-card"><div class="label">Loading...</div><div class="value">-</div></div>
+<div class="grid">
+    <!-- Project Info -->
+    <div class="panel" id="project-panel">
+        <div class="panel-title">Project</div>
+        <div class="project-grid" id="project">
+            <span class="label">Loading...</span>
+        </div>
     </div>
 
-    <div class="heatmap-container">
-        <div class="heatmap" id="heatmap" hx-get="/admin/heatmap/html" hx-trigger="load, every 5s" hx-swap="innerHTML">
-            Loading heatmap...
+    <!-- Requests -->
+    <div class="panel" id="requests-panel">
+        <div class="panel-title">Requests <span id="req-count" style="color:var(--dim)"></span></div>
+        <div id="requests" style="overflow-y:auto;max-height:140px;"></div>
+    </div>
+
+    <!-- Heatmap -->
+    <div class="panel full" id="heatmap-panel">
+        <div class="panel-title">Heatmap</div>
+        <div class="heatmap-wrap">
+            <div class="heatmap" id="heatmap"></div>
         </div>
         <div class="legend">
-            <div class="legend-item"><div class="legend-dot" style="background:#374151"></div> Pending</div>
-            <div class="legend-item"><div class="legend-dot" style="background:#facc15"></div> Assigned</div>
-            <div class="legend-item"><div class="legend-dot" style="background:#60a5fa"></div> Working</div>
-            <div class="legend-item"><div class="legend-dot" style="background:#4ade80"></div> Completed</div>
-            <div class="legend-item"><div class="legend-dot" style="background:#22c55e"></div> Validated</div>
-            <div class="legend-item"><div class="legend-dot" style="background:#ef4444"></div> Error</div>
+            <span><span class="legend-dot" style="background:#1e293b"></span>Pending</span>
+            <span><span class="legend-dot" style="background:var(--yellow)"></span>Assigned</span>
+            <span><span class="legend-dot" style="background:var(--blue)"></span>Working</span>
+            <span><span class="legend-dot" style="background:var(--green)"></span>Completed</span>
+            <span><span class="legend-dot" style="background:#16a34a"></span>Validated</span>
+            <span><span class="legend-dot" style="background:var(--red)"></span>Error</span>
         </div>
     </div>
 
-    <div class="actions">
-        <button class="btn btn-green" hx-post="/admin/assemble" hx-swap="none" hx-on::after-request="alert('Assembly started')">Assemble World</button>
-        <button class="btn btn-blue" hx-post="/admin/export" hx-swap="none" hx-on::after-request="alert('Export started')">Export Archive</button>
+    <!-- Logs -->
+    <div class="panel full" id="logs-panel" style="display:flex;flex-direction:column;">
+        <div class="panel-title">Logs</div>
+        <div class="logs-scroll" id="logs"></div>
     </div>
-    <div id="status-msg" class="status-msg"></div>
+
+    <!-- Actions -->
+    <div class="panel full" style="display:flex;align-items:center;gap:16px;">
+        <div class="actions">
+            <button class="btn" onclick="doAction('/admin/assemble')">Assemble</button>
+            <button class="btn" onclick="doAction('/admin/export')">Export</button>
+            <button class="btn" onclick="doAction('/admin/torrent')">Torrent</button>
+        </div>
+        <div class="status-line" id="action-status"></div>
+    </div>
+</div>
+
+<script>
+const $ = s => document.getElementById(s);
+
+async function fetchJSON(url) {
+    try { const r = await fetch(url); return r.ok ? await r.json() : null; } catch { return null; }
+}
+
+function statusClass(s) {
+    if (s < 300) return 's-2xx';
+    if (s < 400) return 's-3xx';
+    if (s < 500) return 's-4xx';
+    return 's-5xx';
+}
+
+function timeAgo(ts) {
+    const d = Date.now()/1000 - ts;
+    if (d < 60) return Math.floor(d) + 's ago';
+    if (d < 3600) return Math.floor(d/60) + 'm ago';
+    return Math.floor(d/3600) + 'h ago';
+}
+
+// ── Project ──────────────────────────────────────────
+async function updateProject() {
+    const d = await fetchJSON('/admin/project');
+    if (!d) return;
+    const c = d.config || {};
+    const t = d.tasks || {};
+    const total = Math.max(t.pending + t.assigned + t.working + t.completed + t.validated, 1);
+    const done = t.completed + t.validated;
+    const pct = (done / total * 100).toFixed(1);
+    const barW = Math.min(done / total * 100, 100);
+
+    $('project').innerHTML = `
+        <span class="label">World</span><span class="val bold">${c.world_name || '—'}</span>
+        <span class="label">Seed</span><span class="val">${c.seed || '—'}</span>
+        <span class="label">Dimension</span><span class="val">${c.dimension || '—'}</span>
+        <span class="label">Shape</span><span class="val">${c.shape || '—'}</span>
+        <span class="label">Loader</span><span class="val">${c.minecraft_loader || '—'} ${c.minecraft_version || ''}</span>
+        <span class="label">Radius</span><span class="val">${c.radius || '—'} chunks</span>
+        <span class="label">Uptime</span><span class="val">${d.uptime}</span>
+        <span class="label">Clients</span><span class="val">${d.clients}</span>
+        <span class="label">Requests</span><span class="val">${d.request_count}</span>
+        <span class="label">Storage</span><span class="val">${d.total_storage_mb} MB</span>
+        <span class="label" style="grid-column:1/-1">
+            <div class="progress-bar"><div class="progress-fill" style="width:${barW}%"></div></div>
+            <div class="progress-label">${done}/${total} batches (${pct}%) — ${t.working} working, ${t.assigned} assigned</div>
+        </span>
+    `;
+}
+
+// ── Heatmap ──────────────────────────────────────────
+async function updateHeatmap() {
+    const d = await fetchJSON('/admin/heatmap');
+    if (!d || !d.regions.length) { $('heatmap').innerHTML = '<span style="color:var(--dim)">No data</span>'; return; }
+    const rs = d.regions;
+    const minX = Math.min(...rs.map(r => r.region_x));
+    const maxX = Math.max(...rs.map(r => r.region_x));
+    const minZ = Math.min(...rs.map(r => r.region_z));
+    const maxZ = Math.max(...rs.map(r => r.region_z));
+    const cols = maxX - minX + 1;
+    const grid = {};
+    rs.forEach(r => grid[`${r.region_x},${r.region_z}`] = r.status);
+    $('heatmap').style.gridTemplateColumns = `repeat(${cols}, 14px)`;
+    let html = '';
+    for (let z = minZ; z <= maxZ; z++) {
+        for (let x = minX; x <= maxX; x++) {
+            const st = grid[`${x},${z}`] || 'pending';
+            html += `<div class="cell ${st}" title="(${x},${z}) ${st}"></div>`;
+        }
+    }
+    $('heatmap').innerHTML = html;
+}
+
+// ── Requests ─────────────────────────────────────────
+async function updateRequests() {
+    const d = await fetchJSON('/admin/requests');
+    if (!d || !d.requests.length) { $('requests').innerHTML = '<div style="color:var(--dim)">No requests yet</div>'; $('req-count').textContent=''; return; }
+    $('req-count').textContent = `[${d.requests.length}]`;
+    let html = '<table class="req-table">';
+    d.requests.slice(-20).reverse().forEach(r => {
+        const t = new Date(r.ts * 1000).toLocaleTimeString();
+        html += `<tr><td class="time">${t}</td><td class="path">${r.path}</td><td class="status ${statusClass(r.status)}">${r.status}</td></tr>`;
+    });
+    html += '</table>';
+    $('requests').innerHTML = html;
+}
+
+// ── Logs ─────────────────────────────────────────────
+let _logCount = 0;
+async function updateLogs() {
+    const d = await fetchJSON('/admin/logs');
+    if (!d || !d.logs.length) return;
+    const el = $('logs');
+    const wasAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 30;
+    if (d.logs.length !== _logCount) {
+        _logCount = d.logs.length;
+        el.innerHTML = d.logs.map(l => `<div class="log-line"><span class="log-ts">${l.ts}</span><span class="log-icon">${l.icon}</span><span class="log-msg">${escHtml(l.msg)}</span></div>`).join('');
+        if (wasAtBottom) el.scrollTop = el.scrollHeight;
+    }
+}
+
+function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// ── Actions ──────────────────────────────────────────
+async function doAction(url) {
+    const el = $('action-status');
+    el.textContent = 'Working...';
+    try {
+        const r = await fetch(url, {method:'POST'});
+        const d = await r.json();
+        el.textContent = r.ok ? `OK: ${JSON.stringify(d).slice(0,80)}` : `Error ${r.status}: ${d.detail || ''}`;
+    } catch(e) { el.textContent = `Error: ${e.message}`; }
+}
+
+// ── Poll loop ────────────────────────────────────────
+async function poll() {
+    await Promise.all([updateProject(), updateHeatmap(), updateRequests(), updateLogs()]);
+}
+poll();
+setInterval(poll, 2000);
+</script>
 </body>
 </html>

@@ -18,7 +18,7 @@ from rich.text import Text
 class ClientTUI:
     """Rich-based TUI showing status, progress, logs, and system metrics."""
 
-    MAX_LOG = 50
+    MAX_LOG = 200
 
     def __init__(self):
         self.console = Console()
@@ -32,6 +32,7 @@ class ClientTUI:
         self._power_score = 0.0
         self._server_url = ""
         self._running = False
+        self._log_offset = 0
         self._latest_step: StepSnapshot | None = None
         self._system: SystemSample | None = None
         self._layout: Layout | None = None
@@ -185,16 +186,30 @@ class ClientTUI:
         return Panel(Align.center("\n".join([str(e) for e in elements])), title="Progress", border_style="yellow")
 
     def _render_log(self) -> Panel:
-        """Render log panel with recent log entries."""
+        """Render log panel with scrollable log entries."""
         with self._lock:
             lines = list(self._log_buffer)
+            offset = self._log_offset
+
+        visible = 15
+        if offset > 0:
+            end = len(lines) - offset
+            start = max(0, end - visible)
+            shown = lines[start:end]
+            scroll_info = f" ↑{offset}"
+        else:
+            shown = lines[-visible:]
+            scroll_info = ""
+
         table = Table(box=None, padding=(0, 1), show_header=False)
         table.add_column("Time", style="dim", width=8)
         table.add_column("Icon", width=2)
         table.add_column("Message")
-        for ts, icon, msg in lines[-15:]:
+        for ts, icon, msg in shown:
             table.add_row(ts, icon, msg[:120])
-        return Panel(table, title="Log", border_style="magenta")
+        if not shown:
+            table.add_row("", "", Text("Waiting for activity…", style="dim italic"))
+        return Panel(table, title=f"Log{scroll_info}", border_style="magenta")
 
     def _render_system(self) -> Panel:
         """Render system resource panel with CPU load and memory."""
@@ -208,14 +223,40 @@ class ClientTUI:
         table.add_row("Memory", f"{sys.mem_avail_gb:.1f}/{sys.mem_total_gb:.1f} GB ({sys.mem_used_pct:.0f}%)")
         return Panel(table, title="System", border_style="cyan")
 
+    def _start_key_reader(self):
+        """Start background thread to read arrow keys for log scrolling."""
+
+        def _reader():
+            try:
+                import readchar
+
+                while self._running:
+                    key = readchar.readkey()
+                    with self._lock:
+                        max_off = max(0, len(self._log_buffer) - 15)
+                        if key == readchar.key.UP_ARROW:
+                            self._log_offset = min(self._log_offset + 1, max_off)
+                        elif key == readchar.key.DOWN_ARROW:
+                            self._log_offset = max(self._log_offset - 1, 0)
+                        elif key == readchar.key.HOME or key == readchar.key.PAGE_UP:
+                            self._log_offset = max_off
+                        elif key == readchar.key.END or key == readchar.key.PAGE_DOWN:
+                            self._log_offset = 0
+            except Exception:
+                pass
+
+        t = threading.Thread(target=_reader, daemon=True)
+        t.start()
+
     def run(self):
         """Start the TUI event loop with live display."""
         self._running = True
+        self._start_key_reader()
         layout = self._build_layout()
         self._layout = layout
 
         try:
-            with Live(layout, refresh_per_second=4, screen=True, console=self.console):
+            with Live(layout, refresh_per_second=4, screen=True, console=self.console, mouse=False):
                 while self._running:
                     with self._lock:
                         self._latest_step = monitor.latest()
