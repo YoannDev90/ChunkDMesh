@@ -3,9 +3,12 @@
 import dataclasses
 import threading
 import time
-from dataclasses import dataclass
+from collections import deque
+from dataclasses import dataclass, field
 
 from constants import RECENT_REQUESTS_MAX
+
+LOG_BUFFER_MAX = 100
 
 
 @dataclass
@@ -21,6 +24,7 @@ class ServerStats:
     total_storage_mb: float = 0.0
     last_request_path: str = ""
     last_request_status: int = 0
+    world_config: dict = field(default_factory=dict)
 
 
 class ServerState:
@@ -28,6 +32,7 @@ class ServerState:
         self._lock = threading.Lock()
         self.stats = ServerStats()
         self._recent_requests: list[tuple[float, str, int]] = []
+        self._log_buffer: deque[tuple[str, str, str]] = deque(maxlen=LOG_BUFFER_MAX)
 
     def record_request(self, path: str, status: int):
         with self._lock:
@@ -37,6 +42,15 @@ class ServerState:
             self._recent_requests.append((time.time(), path, status))
             if len(self._recent_requests) > RECENT_REQUESTS_MAX:
                 self._recent_requests.pop(0)
+
+    def log(self, icon: str, msg: str):
+        ts = time.strftime("%H:%M:%S")
+        with self._lock:
+            self._log_buffer.append((ts, icon, msg))
+
+    def recent_logs(self) -> list[tuple[str, str, str]]:
+        with self._lock:
+            return list(self._log_buffer)
 
     def update_task_counts(self, pending=0, assigned=0, working=0, completed=0, validated=0):
         with self._lock:
@@ -53,6 +67,10 @@ class ServerState:
     def update_clients(self, count: int):
         with self._lock:
             self.stats.active_clients = count
+
+    def set_world_config(self, config: dict):
+        with self._lock:
+            self.stats.world_config = config
 
     def snapshot(self) -> ServerStats:
         with self._lock:

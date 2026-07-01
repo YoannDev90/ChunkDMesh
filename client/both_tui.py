@@ -1,8 +1,9 @@
-"""Unified TUI for 'both' mode — merges server + client panels."""
+"""Unified TUI for 'both' mode — 5 panels, no header/footer."""
 
 import re
 import time
 import traceback
+from collections import deque
 
 from client_tui import ClientTUI
 from monitor import monitor, sample_system
@@ -14,27 +15,43 @@ from rich.progress import BarColumn, Progress, TextColumn, TimeElapsedColumn
 from rich.table import Table
 from rich.text import Text
 
+# Ordered step sequence for the checklist
+_STEP_ORDER = [
+    "wait_for_server",
+    "power_score",
+    "login",
+    "fetch_config",
+    "ensure_java",
+    "setup_server",
+    "download_mods",
+    "install_loader",
+    "server_start",
+    "wait_ready",
+    "server_restart",
+    "rcon_connect",
+    "fetch_task",
+    "chunky_generation",
+]
 
-def _status_dot(status: str) -> Text:
-    t = Text()
-    if status in ("done", "ready", "connected"):
-        t.append("● ", style="bold green")
-        t.append(status, style="green")
-    elif status in ("initializing", "connecting", "login"):
-        t.append("● ", style="bold yellow")
-        t.append(status, style="yellow")
-    elif status in ("error",):
-        t.append("● ", style="bold red")
-        t.append(status, style="red")
-    else:
-        t.append("● ", style="bold cyan")
-        t.append(status, style="cyan")
-    return t
+_STEP_LABELS = {
+    "wait_for_server": "Connect to server",
+    "power_score": "Benchmark power",
+    "login": "Authenticate",
+    "fetch_config": "Fetch config",
+    "ensure_java": "Detect Java",
+    "setup_server": "Setup MC server",
+    "download_mods": "Download mods",
+    "install_loader": "Install loader",
+    "server_start": "Start MC server",
+    "wait_ready": "Wait for server ready",
+    "server_restart": "Restart server",
+    "rcon_connect": "Connect RCON",
+    "fetch_task": "Fetch task",
+    "chunky_generation": "Chunky generation",
+}
 
 
 class BothTUI:
-    """Single TUI combining server stats and client progress."""
-
     def __init__(self, client_tui: ClientTUI, console_file=None):
         self.client_tui = client_tui
         self._running = False
@@ -42,11 +59,13 @@ class BothTUI:
         self._client_done = False
         self._console = Console(file=console_file) if console_file else Console()
         self._progress = Progress(
-            BarColumn(),
-            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+            BarColumn(bar_width=None),
+            TextColumn("[progress.percentage]{task.percentage:>5.1f}%"),
             TimeElapsedColumn(),
         )
         self._progress_task = self._progress.add_task("Idle", total=100)
+        self._cpu_history: deque[float] = deque(maxlen=30)
+        self._mem_history: deque[float] = deque(maxlen=30)
 
     def set_client_error(self, error: str):
         self._client_error = error
@@ -60,13 +79,11 @@ class BothTUI:
         try:
             with Live(layout, refresh_per_second=4, screen=True, console=self._console):
                 while self._running:
-                    self._safe_update(layout, "header", self._render_header)
-                    self._safe_update(layout, "body", self._render_client, "left", "client_panel")
-                    self._safe_update(layout, "body", self._render_steps, "left", "steps_panel")
-                    self._safe_update(layout, "body", self._render_server_tasks, "right", "server_panel")
-                    self._safe_update(layout, "body", self._render_server_requests, "right", "requests_panel")
-                    self._safe_update(layout, "body", self._render_system, "right", "system_panel")
-                    self._safe_update(layout, "footer", self._render_footer)
+                    self._safe_update(layout, "body", self._render_checklist, "left", "checklist")
+                    self._safe_update(layout, "body", self._render_resources, "left", "resources")
+                    self._safe_update(layout, "body", self._render_project, "right", "project")
+                    self._safe_update(layout, "body", self._render_requests, "right", "requests")
+                    self._safe_update(layout, "body", self._render_logs, "right", "logs")
                     time.sleep(0.25)
         except KeyboardInterrupt:
             pass
@@ -96,156 +113,198 @@ class BothTUI:
 
     def _build_layout(self) -> Layout:
         layout = Layout()
-        layout.split_column(
-            Layout(name="header", size=3),
-            Layout(name="body"),
-            Layout(name="footer", size=5),
-        )
-        layout["body"].split_row(
+        layout.split_row(
             Layout(name="left"),
             Layout(name="right"),
         )
-        layout["body"]["left"].split_column(
-            Layout(name="client_panel", ratio=3),
-            Layout(name="steps_panel", ratio=2),
+        layout["left"].split_column(
+            Layout(name="checklist", ratio=3),
+            Layout(name="resources", ratio=2),
         )
-        layout["body"]["right"].split_column(
-            Layout(name="server_panel", ratio=2),
-            Layout(name="requests_panel", ratio=3),
-            Layout(name="system_panel", ratio=1),
+        layout["right"].split_column(
+            Layout(name="project", ratio=1),
+            Layout(name="requests", ratio=2),
+            Layout(name="logs", ratio=3),
         )
         return layout
 
-    # ── Header ────────────────────────────────────────────────
+    # ── Left: Checklist + Progress ────────────────────────────
 
-    def _render_header(self) -> Panel:
-        srv = self._srv_stats()
-
-        uptime = time.time() - srv.start_time
-        h, rem = divmod(int(uptime), 3600)
-        m, s = divmod(rem, 60)
-        uptime_str = f"{h:02d}:{m:02d}:{s:02d}"
-
-        with self.client_tui._lock:
-            score = self.client_tui._power_score
-
-        left = Text()
-        left.append(" ◆ ", style="bold cyan")
-        left.append("ChunkDMesh", style="bold white")
-
-        center = Text()
-        center.append(f" ⏱ {uptime_str}", style="dim")
-        center.append(f" │ {srv.request_count} reqs", style="dim")
-        center.append(f" │ {srv.active_clients} clients", style="dim")
-
-        right = Text()
-        if self._client_error:
-            right.append(" CLIENT ", style="bold white on red")
-            right.append(" ✗ ", style="red")
-        elif self._client_done:
-            right.append(" CLIENT ", style="bold white on green")
-            right.append(" ✓ ", style="green")
-        else:
-            right.append(" CLIENT ", style="bold white on blue")
-            right.append(" … ", style="cyan")
-        if score:
-            right.append(f" {score:.1f}", style="yellow")
-
-        return Panel(Group(left, center, right), style="dim on grey11", border_style="bright_cyan")
-
-    # ── Client panel (status + progress) ──────────────────────
-
-    def _render_client(self) -> Panel:
+    def _render_checklist(self) -> Panel:
         ct = self.client_tui
         with ct._lock:
             status = ct._status
             detail = ct._status_detail
-            region = ct._current_region
-            batch = ct._batch_count
             progress = ct._current_progress
 
-        # Status
-        status_table = Table.grid(padding=(0, 1), expand=True)
-        status_table.add_column(width=8, style="bold")
-        status_table.add_column()
-        status_table.add_row("Status", _status_dot(status))
-        if detail:
-            status_table.add_row("Detail", Text(detail, style="dim"))
-        if region:
-            status_table.add_row("Region", Text(region, style="cyan"))
-        status_table.add_row("Batches", Text(str(batch), style="bold"))
+        # Determine which steps are done
+        done_steps = set()
+        for s in monitor.steps():
+            done_steps.add(s.name)
+
+        # Current step from status
+        current_map = {
+            "connecting": "wait_for_server",
+            "connected": "power_score",
+            "login": "login",
+            "config": "fetch_config",
+            "java": "ensure_java",
+            "setup": "setup_server",
+            "mods": "download_mods",
+            "installing_loader": "install_loader",
+            "launching": "server_start",
+            "ready": "rcon_connect",
+            "generating": "chunky_generation",
+            "idle": "fetch_task",
+        }
+        current_step = current_map.get(status, "")
+
+        # Build checklist
+        lines = Table(box=None, padding=(0, 1), show_header=False, expand=True)
+        lines.add_column(width=2, justify="center")
+        lines.add_column(ratio=1)
+
+        for step_key in _STEP_ORDER:
+            label = _STEP_LABELS.get(step_key, step_key)
+            if step_key in done_steps:
+                lines.add_row(Text("✓", style="bold green"), Text(label, style="green"))
+            elif step_key == current_step:
+                lines.add_row(Text("►", style="bold cyan"), Text(label, style="bold cyan"))
+            else:
+                lines.add_row(Text("○", style="dim"), Text(label, style="dim"))
 
         # Progress bar
         pct = 0.0
-        progress_text = ""
         if progress:
             mp = re.search(r"\((\d+(?:\.\d+)?)%\)", progress)
             if mp:
                 pct = float(mp.group(1))
-            mp2 = re.search(r"(\d[\d,]*)\s*/\s*(\d[\d,]*)", progress.replace(",", ""))
-            if mp2:
-                done = int(mp2.group(1))
-                total = int(mp2.group(2))
-                if total > 0:
-                    pct = done / total * 100
-                    progress_text = f"{done:,} / {total:,}"
+            else:
+                mp2 = re.search(r"(\d[\d,]*)\s*/\s*(\d[\d,]*)", progress.replace(",", ""))
+                if mp2:
+                    done_n = int(mp2.group(1))
+                    total_n = int(mp2.group(2))
+                    if total_n > 0:
+                        pct = done_n / total_n * 100
 
         label = "Chunky" if progress else "Idle"
         self._progress.update(self._progress_task, completed=pct, description=label)
 
-        progress_table = Table.grid(padding=(0, 1), expand=True)
-        progress_table.add_column(width=8, style="bold")
-        progress_table.add_column()
-        progress_table.add_row("Progress", self._progress)
-        if progress_text:
-            progress_table.add_row("Chunks", Text(progress_text, style="dim"))
+        # Status line
+        status_text = Text()
+        if self._client_error:
+            status_text.append("✗ ", style="bold red")
+            status_text.append(self._client_error[:60], style="red")
+        elif self._client_done:
+            status_text.append("✓ Done", style="bold green")
+        elif detail:
+            status_text.append(status, style="cyan")
+            status_text.append(f" — {detail}", style="dim")
+        else:
+            status_text.append(status, style="cyan")
 
-        content = Group(status_table, Text(), progress_table)
+        content = Group(lines, Text(), self._progress, Text(), status_text)
         return Panel(content, title=" CLIENT ", border_style="blue", expand=True)
 
-    # ── Steps panel ───────────────────────────────────────────
+    # ── Left: Resource Monitor ────────────────────────────────
 
-    def _render_steps(self) -> Panel:
-        steps = monitor.steps()
-        if not steps:
-            return Panel(
-                Text("  Waiting for measurements…", style="dim italic"),
-                title=" STEPS ",
-                border_style="dim",
-            )
+    def _render_resources(self) -> Panel:
+        sys = sample_system()
+        self._cpu_history.append(sys.cpu_load_1)
+        self._mem_history.append(sys.mem_used_pct)
 
-        table = Table(show_header=True, header_style="bold cyan", box=None, padding=(0, 1), expand=True)
-        table.add_column("Step", style="white", ratio=3)
-        table.add_column("Wall", justify="right", ratio=1)
-        table.add_column("CPU", justify="right", ratio=1)
-        table.add_column("RSS Δ", justify="right", ratio=1)
+        # CPU sparkline
+        cpu_bar = self._sparkline(self._cpu_history, max_val=8.0, width=40)
+        cpu_color = "green" if sys.cpu_load_1 < 2 else "yellow" if sys.cpu_load_1 < 4 else "red"
 
-        for s in steps[-8:]:
-            wall_s = s.wall_s
-            cpu_s = s.cpu_s
-            rss = s.rss_kb_delta
+        # Memory sparkline
+        mem_bar = self._sparkline(self._mem_history, max_val=100.0, width=40)
+        mem_color = "green" if sys.mem_used_pct < 60 else "yellow" if sys.mem_used_pct < 85 else "red"
 
-            wall_str = f"{wall_s * 1000:.0f}ms" if wall_s < 1 else f"{wall_s:.1f}s"
-            cpu_str = f"{cpu_s * 1000:.0f}ms" if cpu_s < 1 else f"{cpu_s:.1f}s"
+        # Step info
+        latest = monitor.latest()
+        step_info = Text()
+        if latest:
+            wall_s = latest.wall_s
+            cpu_s = latest.cpu_s
+            rss = latest.rss_kb_delta
+            step_info.append(f"Last: {latest.name}", style="cyan")
+            step_info.append(f"  wall={wall_s:.2f}s", style="dim")
+            step_info.append(f"  cpu={cpu_s:.2f}s", style="dim")
+            step_info.append(f"  rss={rss:+d}K", style="dim")
 
-            wall_style = "red" if wall_s > 5 else "yellow" if wall_s > 1 else "green"
-            cpu_style = "red" if cpu_s > 3 else "yellow" if cpu_s > 0.5 else "green"
-            rss_style = "red" if abs(rss) > 50_000 else "yellow" if abs(rss) > 10_000 else "dim"
-            rss_str = f"{rss // 1024:+d}M" if abs(rss) > 1024 else f"{rss:+d}K"
+        table = Table.grid(padding=(0, 1), expand=True)
+        table.add_column(width=8, style="bold")
+        table.add_column()
+        table.add_row(
+            Text("CPU", style=cpu_color),
+            Text(f"{cpu_bar} {sys.cpu_load_1:.2f} / {sys.cpu_load_5:.2f} / {sys.cpu_load_15:.2f}", style=cpu_color),
+        )
+        table.add_row(
+            Text("Memory", style=mem_color),
+            Text(
+                f"{mem_bar} {sys.mem_used_pct:.0f}% ({sys.mem_avail_gb:.1f}/{sys.mem_total_gb:.1f} GB)",
+                style=mem_color,
+            ),
+        )
 
+        content = Group(table, Text(), step_info)
+        return Panel(content, title=" RESOURCES ", border_style="cyan", expand=True)
+
+    @staticmethod
+    def _sparkline(data: deque, max_val: float, width: int = 40) -> str:
+        """Render a sparkline from recent samples."""
+        if not data:
+            return "░" * width
+        blocks = " ▁▂▃▄▅▆▇█"
+        # Map last `width` samples to block chars
+        recent = list(data)[-width:]
+        result = []
+        for v in recent:
+            idx = min(int(v / max_val * (len(blocks) - 1)), len(blocks) - 1)
+            result.append(blocks[idx])
+        # Pad to width
+        while len(result) < width:
+            result.insert(0, " ")
+        return "".join(result)
+
+    # ── Right: Project Info ───────────────────────────────────
+
+    def _render_project(self) -> Panel:
+        from state import server_state
+
+        stats = server_state.snapshot()
+        config = stats.world_config
+
+        table = Table.grid(padding=(0, 1), expand=True)
+        table.add_column(width=12, style="bold")
+        table.add_column()
+
+        # Uptime
+        uptime = time.time() - stats.start_time
+        h, rem = divmod(int(uptime), 3600)
+        m, s = divmod(rem, 60)
+        table.add_row("Uptime", Text(f"{h:02d}:{m:02d}:{s:02d}", style="dim"))
+
+        # World config
+        if config:
+            table.add_row("World", Text(config.get("world_name", "?"), style="bold white"))
+            table.add_row("Seed", Text(str(config.get("seed", "?")), style="cyan"))
+            table.add_row("Dimension", Text(config.get("dimension", "?"), style="cyan"))
+            table.add_row("Shape", Text(config.get("shape", "?"), style="cyan"))
             table.add_row(
-                Text(s.name[:30], style="white"),
-                Text(wall_str, style=wall_style),
-                Text(cpu_str, style=cpu_style),
-                Text(rss_str, style=rss_style),
+                "Loader",
+                Text(f"{config.get('minecraft_loader', '?')} {config.get('minecraft_version', '?')}", style="cyan"),
             )
+            table.add_row("Radius", Text(f"{config.get('radius', '?')} chunks", style="cyan"))
+        else:
+            table.add_row("World", Text("loading…", style="dim"))
 
-        return Panel(table, title=" STEPS ", border_style="green")
+        # Clients
+        client_style = "bold green" if stats.active_clients > 0 else "dim"
+        table.add_row("Clients", Text(str(stats.active_clients), style=client_style))
 
-    # ── Server tasks panel ────────────────────────────────────
-
-    def _render_server_tasks(self) -> Panel:
-        stats = self._srv_stats()
+        # Tasks
         total = max(
             stats.pending_tasks
             + stats.assigned_tasks
@@ -254,29 +313,21 @@ class BothTUI:
             + stats.validated_tasks,
             1,
         )
-
-        def _row(label: str, count: int, color: str) -> Text:
-            pct = count / total * 100
-            filled = int(pct / 100 * 15)
-            bar = "█" * filled + "░" * (15 - filled)
-            return Text(f"  {bar}  {count:>4}", style=color)
-
-        rows = Group(
-            _make_row("Pending", stats.pending_tasks, "cyan"),
-            _make_row("Assigned", stats.assigned_tasks, "yellow"),
-            _make_row("Working", stats.working_tasks, "green"),
-            _make_row("Completed", stats.completed_tasks, "bright_green"),
-            _make_row("Validated", stats.validated_tasks, "bold green"),
+        pct_done = (stats.completed_tasks + stats.validated_tasks) / total * 100
+        bar = "█" * int(pct_done / 100 * 15) + "░" * (15 - int(pct_done / 100 * 15))
+        table.add_row(
+            "Progress",
+            Text(f"{bar} {stats.completed_tasks + stats.validated_tasks}/{total}", style="green"),
         )
 
-        storage = Text(f"\n  💾 {stats.total_storage_mb:.1f} MB  │  👥 {stats.active_clients} clients", style="dim")
+        return Panel(table, title=" PROJECT ", border_style="bright_cyan", expand=True)
 
-        return Panel(Group(rows, storage), title=" SERVER ", border_style="blue")
+    # ── Right: API Requests ───────────────────────────────────
 
-    # ── Server requests panel ─────────────────────────────────
+    def _render_requests(self) -> Panel:
+        from state import server_state
 
-    def _render_server_requests(self) -> Panel:
-        recent = self._srv_recent()
+        recent = server_state.recent_requests()
         if not recent:
             return Panel(Text("  No requests yet", style="dim italic"), title=" REQUESTS ", border_style="dim")
 
@@ -285,80 +336,42 @@ class BothTUI:
         table.add_column("Path", style="cyan", ratio=3)
         table.add_column("Status", justify="right", ratio=1)
 
-        for ts, path, status in recent[-14:]:
+        for ts, path, status in recent[-12:]:
             t_str = time.strftime("%H:%M:%S", time.localtime(ts))
             s_style = "green" if status < 300 else "yellow" if status < 400 else "red" if status < 500 else "bold red"
             table.add_row(t_str, path[:50], Text(str(status), style=s_style))
 
         return Panel(table, title=f" REQUESTS [{len(recent)}] ", border_style="magenta")
 
-    # ── System panel ──────────────────────────────────────────
+    # ── Right: Live Logs ──────────────────────────────────────
 
-    def _render_system(self) -> Panel:
-        sys = sample_system()
+    def _render_logs(self) -> Panel:
+        from state import server_state
 
-        table = Table.grid(padding=(0, 2), expand=True)
-        table.add_column(width=12, style="bold")
-        table.add_column()
+        logs = server_state.recent_logs()
 
-        cpu_color = "green" if sys.cpu_load_1 < 2 else "yellow" if sys.cpu_load_1 < 4 else "red"
-        table.add_row(
-            "CPU 1/5/15",
-            Text(f"{sys.cpu_load_1:.1f}  {sys.cpu_load_5:.1f}  {sys.cpu_load_15:.1f}", style=cpu_color),
-        )
-
-        mem_color = "green" if sys.mem_used_pct < 60 else "yellow" if sys.mem_used_pct < 85 else "red"
-        filled = int(sys.mem_used_pct / 100 * 20)
-        mem_bar = "█" * filled + "░" * (20 - filled)
-        table.add_row(
-            "Memory",
-            Text(
-                f"{mem_bar} {sys.mem_used_pct:.0f}%  ({sys.mem_avail_gb:.1f}/{sys.mem_total_gb:.1f} GB)",
-                style=mem_color,
-            ),
-        )
-
-        return Panel(table, title=" SYSTEM ", border_style="cyan")
-
-    # ── Footer (log) ──────────────────────────────────────────
-
-    def _render_footer(self) -> Panel:
-        lines = []
-        if self._client_error:
-            lines.append(("", "✗", self._client_error[:120]))
+        # Also include client logs
         with self.client_tui._lock:
             client_lines = list(self.client_tui._log_buffer)
-        lines.extend(client_lines[-4:])
+
+        # Merge: server logs first, then client logs
+        all_lines = []
+        for ts, icon, msg in logs[-6:]:
+            all_lines.append((ts, icon, msg))
+        for ts, icon, msg in client_lines[-4:]:
+            all_lines.append((ts, icon, msg))
+
+        # Keep last 10
+        all_lines = all_lines[-10:]
 
         table = Table(box=None, padding=(0, 1), show_header=False, expand=True)
         table.add_column("Time", style="dim", width=8)
         table.add_column("Icon", width=2)
         table.add_column("Message", overflow="ellipsis")
 
-        for ts, icon, msg in lines[-4:]:
-            table.add_row(ts, icon, msg[:120])
-        if not lines:
-            table.add_row("", "", Text("Initializing…", style="dim italic"))
+        for ts, icon, msg in all_lines:
+            table.add_row(ts, icon, msg[:100])
+        if not all_lines:
+            table.add_row("", "", Text("Waiting for activity…", style="dim italic"))
 
-        return Panel(table, title=" LOG ", border_style="magenta")
-
-    # ── Helpers ───────────────────────────────────────────────
-
-    def _srv_stats(self):
-        from state import server_state
-
-        return server_state.snapshot()
-
-    def _srv_recent(self):
-        from state import server_state
-
-        return server_state.recent_requests()
-
-
-def _make_row(label: str, count: int, color: str) -> Table:
-    """Helper to build a server task row with bar."""
-    t = Table.grid(padding=(0, 1), expand=True)
-    t.add_column(width=10, style="bold")
-    t.add_column()
-    t.add_row(label, Text(f"{count}", style=color))
-    return t
+        return Panel(table, title=" LOGS ", border_style="magenta")

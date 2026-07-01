@@ -16,7 +16,8 @@ from db import Batch, Client, get_db_session
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
 from routes import admin, assets, auth, client, map, tasks
-from sqlalchemy import select
+from sqlalchemy import func, select
+from state import server_state
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +55,7 @@ async def _sweep_dead_clients():
                     for batch in stuck_batches:
                         batch.status = "pending"
                         batch.assigned_to = None
+                        server_state.log("♻", f"Reassigned batch {batch.id} from dead client {dead_client.id}")
                         logger.warning(
                             "Reassigning batch %s from dead client %s",
                             batch.id,
@@ -66,11 +68,58 @@ async def _sweep_dead_clients():
             logger.exception("Dead client sweeper error")
 
 
+async def _update_state_loop():
+    """Periodically poll DB and push counts into server_state for TUI."""
+    while True:
+        try:
+            await asyncio.sleep(3)
+            async with get_db_session() as session:
+                counts = {}
+                for status in ("pending", "assigned", "working", "completed", "validated"):
+                    result = await session.execute(select(func.count(Batch.id)).where(Batch.status == status))
+                    counts[status] = result.scalar() or 0
+                server_state.update_task_counts(
+                    pending=counts["pending"],
+                    assigned=counts["assigned"],
+                    working=counts["working"],
+                    completed=counts["completed"],
+                    validated=counts["validated"],
+                )
+
+                client_count = await session.execute(select(func.count(Client.id)))
+                server_state.update_clients(client_count.scalar() or 0)
+        except Exception:
+            logger.exception("State update loop error")
+
+
 @asynccontextmanager
 async def lifespan(app_instance):
-    task = asyncio.create_task(_sweep_dead_clients())
+    # Load world config for TUI display
+    from config import Config
+
+    try:
+        cfg = Config()
+        await cfg.validate()
+        server_state.set_world_config(
+            {
+                "world_name": cfg.world_name,
+                "minecraft_version": cfg.minecraft_version,
+                "minecraft_loader": cfg.minecraft_loader,
+                "seed": cfg.seed,
+                "shape": cfg.shape,
+                "dimension": cfg.dimension,
+                "radius": cfg.radius,
+            }
+        )
+    except Exception:
+        logger.exception("Failed to load world config for TUI")
+
+    sweep_task = asyncio.create_task(_sweep_dead_clients())
+    state_task = asyncio.create_task(_update_state_loop())
+    server_state.log("★", "Server started")
     yield
-    task.cancel()
+    sweep_task.cancel()
+    state_task.cancel()
 
 
 app = FastAPI(
@@ -84,10 +133,8 @@ FAVICON_PATH = _SRV / "config" / "favicon.ico"
 
 @app.middleware("http")
 async def access_log_middleware(request: Request, call_next):
-    t0 = _time.monotonic()
     resp = await call_next(request)
-    elapsed_ms = (_time.monotonic() - t0) * 1000
-    logger.info("%s %s -> %s (%sms)", request.method, request.url.path, resp.status_code, f"{elapsed_ms:.0f}")
+    server_state.record_request(request.url.path, resp.status_code)
     return resp
 
 
