@@ -16,11 +16,11 @@ pub struct TilerConfig {
 }
 
 impl Default for TilerConfig {
-    /// Default config: blue water overlay at 35% blend, shading/biome/waterflow enabled.
+    /// Default config: blue water overlay at 55% blend, shading/biome/waterflow enabled.
     fn default() -> Self {
         TilerConfig {
-            water_overlay_color: [50, 120, 220],
-            water_overlay_blend: 0.35,
+            water_overlay_color: [40, 100, 220],
+            water_overlay_blend: 0.55,
             shading: ShadingConfig::default(),
             enable_shading: true,
             enable_biome_tint: true,

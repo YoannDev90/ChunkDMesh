@@ -23,8 +23,8 @@ impl Default for RenderConfig {
             enable_biome_tint: true,
             enable_waterflow: true,
             shading: ShadingConfig::default(),
-            water_overlay_color: Rgb::new(50, 120, 220),
-            water_overlay_blend: 0.35,
+            water_overlay_color: Rgb::new(40, 100, 220),
+            water_overlay_blend: 0.55,
         }
     }
 }

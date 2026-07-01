@@ -13,7 +13,14 @@ logger = logging.getLogger(__name__)
 class ClientTiler:
     """Runs mcmap locally to generate PNG tiles from .mca files."""
 
-    def __init__(self, mcmap_bin: Path, palette_path: Path, biome_colors_path: Path, biome_tints_path: Path):
+    def __init__(
+        self,
+        mcmap_bin: Path,
+        palette_path: Path,
+        biome_colors_path: Path,
+        biome_tints_path: Path,
+        block_categories_path: Path | None = None,
+    ):
         """Initialize ClientTiler with mcmap binary and palette paths.
 
         Args:
@@ -21,11 +28,13 @@ class ClientTiler:
             palette_path: Path to block_colors.json.
             biome_colors_path: Path to biome_colors.json.
             biome_tints_path: Path to biome_tint_blocks.json.
+            block_categories_path: Path to block_categories.json (optional).
         """
         self.mcmap_bin = mcmap_bin
         self.palette_path = palette_path
         self.biome_colors_path = biome_colors_path
         self.biome_tints_path = biome_tints_path
+        self.block_categories_path = block_categories_path
 
     @classmethod
     def from_work_dir(cls, work_dir: Path) -> ClientTiler | None:
@@ -42,7 +51,12 @@ class ClientTiler:
         biome_colors = data_dir / "biome_colors.json"
         biome_tints = data_dir / "biome_tint_blocks.json"
 
-        return cls(mcmap_bin, palette, biome_colors, biome_tints)
+        # Block categories: try tiler/config/ first, then data/
+        block_categories = work_dir / "tiler" / "config" / "block_categories.json"
+        if not block_categories.exists():
+            block_categories = data_dir / "block_categories.json"
+
+        return cls(mcmap_bin, palette, biome_colors, biome_tints, block_categories)
 
     def render_region(self, region_mca: Path, output_dir: Path) -> dict[str, Path]:
         """Render all chunks in a region .mca file to PNGs.
@@ -56,8 +70,9 @@ class ClientTiler:
             ("--palette", self.palette_path),
             ("--biome-colors", self.biome_colors_path),
             ("--biome-tints", self.biome_tints_path),
+            ("--block-categories", self.block_categories_path),
         ]:
-            if path.exists():
+            if path and path.exists():
                 cmd.extend([flag, str(path)])
         cmd.extend([str(region_mca), "--all", "--output-dir", str(output_dir)])
 
@@ -98,8 +113,9 @@ class ClientTiler:
             ("--palette", self.palette_path),
             ("--biome-colors", self.biome_colors_path),
             ("--biome-tints", self.biome_tints_path),
+            ("--block-categories", self.block_categories_path),
         ]:
-            if path.exists():
+            if path and path.exists():
                 cmd.extend([flag, str(path)])
         cmd.extend([str(region_mca), str(chunk_x), str(chunk_z), "--output-dir", str(output_dir)])
 
