@@ -60,7 +60,7 @@ class BothTUI:
         self._running = False
         self._client_error: str | None = None
         self._client_done = False
-        self._console = Console(file=console_file) if console_file else Console()
+        self._console = Console(mouse=False, file=console_file) if console_file else Console(mouse=False)
         self._progress = Progress(
             BarColumn(bar_width=None),
             TextColumn("[progress.percentage]{task.percentage:>5.1f}%"),
@@ -131,7 +131,7 @@ class BothTUI:
         self._start_key_reader()
         layout = self._build_layout()
         try:
-            with Live(layout, refresh_per_second=4, screen=True, console=self._console, mouse=False):
+            with Live(layout, refresh_per_second=4, screen=True, console=self._console):
                 while self._running:
                     self._safe_update(layout, "body", self._render_checklist, "left", "checklist")
                     self._safe_update(layout, "body", self._render_resources, "left", "resources")

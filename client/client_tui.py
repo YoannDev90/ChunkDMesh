@@ -21,7 +21,7 @@ class ClientTUI:
     MAX_LOG = 200
 
     def __init__(self):
-        self.console = Console()
+        self.console = Console(mouse=False)
         self._log_buffer: deque = deque(maxlen=self.MAX_LOG)
         self._lock = threading.Lock()
         self._status = "initializing"
@@ -272,7 +272,7 @@ class ClientTUI:
         self._layout = layout
 
         try:
-            with Live(layout, refresh_per_second=4, screen=True, console=self.console, mouse=False):
+            with Live(layout, refresh_per_second=4, screen=True, console=self.console):
                 while self._running:
                     with self._lock:
                         self._latest_step = monitor.latest()
