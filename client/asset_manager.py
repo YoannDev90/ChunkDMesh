@@ -1,5 +1,6 @@
 import hashlib
 import json
+import os
 import secrets
 import shutil
 import subprocess
@@ -55,6 +56,8 @@ _LOADER_CONFIGS = {
 
 
 class AssetManager:
+    """Manages server assets: mods, config, server JAR, RCON password."""
+
     def __init__(self, server_url: str, token: str, work_dir: Path = WORK_DIR):
         self.server_url = server_url.rstrip("/")
         self.token = token
@@ -62,12 +65,28 @@ class AssetManager:
         self.headers = {"Authorization": f"Bearer {token}"}
 
     def _get(self, path: str) -> httpx.Response:
+        """Send authenticated GET request to server.
+
+        Args:
+            path: URL path relative to server base.
+
+        Returns: httpx Response.
+        """
         with httpx.Client(follow_redirects=True, timeout=30) as client:
             resp = client.get(f"{self.server_url}{path}", headers=self.headers)
             resp.raise_for_status()
             return resp
 
     def download_mods(self, expected_hash: str | None = None) -> Path:
+        """Download mods.zip from server with optional hash verification.
+
+        Args:
+            expected_hash: Optional SHA-256 hash for verification.
+
+        Returns: Path to downloaded zip.
+
+        Raises: ValueError if hash mismatch.
+        """
         zip_path = self.work_dir / "mods.zip"
 
         if zip_path.exists() and expected_hash:
@@ -98,6 +117,7 @@ class AssetManager:
         return zip_path
 
     def download_config(self) -> dict:
+        """Download and save config.json from server."""
         print("Downloading config.json...")
         resp = self._get("/assets/config.json")
         config = resp.json()
@@ -110,6 +130,18 @@ class AssetManager:
         return config
 
     def download_from_modrinth(self, project_id: str, version: str, mc_version: str, loader: str) -> Path:
+        """Download a mod JAR from Modrinth.
+
+        Args:
+            project_id: Modrinth project ID.
+            version: Specific version string.
+            mc_version: Minecraft version.
+            loader: Mod loader name.
+
+        Returns: Path to downloaded JAR.
+
+        Raises: RuntimeError if version or files not found.
+        """
         import httpx
 
         url = f"https://api.modrinth.com/v2/project/{project_id}/version"
@@ -161,6 +193,16 @@ class AssetManager:
         return dest
 
     def extract_mods(self, zip_path: Path, dest: Path | None = None) -> Path:
+        """Extract mods zip into mods directory.
+
+        Args:
+            zip_path: Path to zip archive.
+            dest: Optional target directory.
+
+        Returns: Path to mods directory.
+
+        Raises: RuntimeError on path traversal.
+        """
         mods_dir = dest or self.work_dir / "server" / "mods"
         mods_dir.mkdir(parents=True, exist_ok=True)
 
@@ -177,15 +219,28 @@ class AssetManager:
         return mods_dir
 
     def get_rcon_password(self) -> str:
+        """Get or generate RCON password, persisted to disk with restricted perms.
+
+        Returns: RCON password string.
+        """
         pw_file = self.work_dir / RCON_PASSWORD_FILE
         if pw_file.exists():
             return pw_file.read_text().strip()
         pw = secrets.token_hex(16)
         self.work_dir.mkdir(parents=True, exist_ok=True)
-        pw_file.write_text(pw)
+        fd = os.open(str(pw_file), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, 'w') as f:
+            f.write(pw)
         return pw
 
     def write_server_properties(self, seed=None) -> Path:
+        """Write server.properties with RCON enabled and given seed.
+
+        Args:
+            seed: Optional world seed.
+
+        Returns: Path to written properties file.
+        """
         server_dir = self.work_dir / "server"
         server_dir.mkdir(parents=True, exist_ok=True)
 
@@ -218,6 +273,15 @@ class AssetManager:
         return props_path
 
     def setup_server_dir(self, mc_version: str, loader: str, loader_version: str) -> Path:
+        """Create server directory and EULA file.
+
+        Args:
+            mc_version: Minecraft version (unused, for interface consistency).
+            loader: Loader name (unused).
+            loader_version: Loader version (unused).
+
+        Returns: Path to server directory.
+        """
         server_dir = self.work_dir / "server"
         server_dir.mkdir(parents=True, exist_ok=True)
 
@@ -229,6 +293,17 @@ class AssetManager:
         return server_dir
 
     def get_server_jar(self, mc_version: str, loader: str, loader_version: str) -> Path:
+        """Get or install server JAR for given loader.
+
+        Args:
+            mc_version: Minecraft version.
+            loader: Mod loader name.
+            loader_version: Loader version.
+
+        Returns: Path to server JAR.
+
+        Raises: ValueError for unsupported loader.
+        """
         server_dir = self.work_dir / "server"
         server_dir.mkdir(parents=True, exist_ok=True)
 
@@ -244,6 +319,19 @@ class AssetManager:
     def _install_loader(
         self, server_dir: Path, java_bin: Path, mc_version: str, loader_version: str, cfg: dict
     ) -> Path:
+        """Download installer and set up mod loader server JAR.
+
+        Args:
+            server_dir: Server directory.
+            java_bin: Path to java binary.
+            mc_version: Minecraft version.
+            loader_version: Loader version.
+            cfg: Loader config dict.
+
+        Returns: Path to installed server JAR.
+
+        Raises: RuntimeError if installation fails.
+        """
         args = {"mc_version": mc_version, "loader_version": loader_version}
 
         patterns = [p.format(**args) for p in cfg["installed_jar_patterns"]]
@@ -293,6 +381,12 @@ class AssetManager:
         raise RuntimeError(f"{cfg['name']} installation failed: server jar not found")
 
     def _download_file(self, url: str, dest: Path):
+        """Download file from URL to destination path.
+
+        Args:
+            url: Source URL.
+            dest: Destination file path.
+        """
         with httpx.Client(follow_redirects=True, timeout=300) as client, client.stream("GET", url) as resp:
             resp.raise_for_status()
             with open(dest, "wb") as f:
@@ -308,6 +402,7 @@ class AssetManager:
         return sha256.hexdigest() == expected_hash
 
     def cleanup(self):
+        """Delete the work directory and all contents."""
         if self.work_dir.exists():
             shutil.rmtree(self.work_dir)
             print(f"Cleaned up {self.work_dir}")

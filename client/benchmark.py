@@ -7,6 +7,8 @@ import httpx
 
 
 class BenchmarkRunner:
+    """Runs a local chunk generation benchmark and submits results."""
+
     def __init__(self, server_url: str, token: str):
         self.server_url = server_url.rstrip("/")
         self.token = token
@@ -21,6 +23,18 @@ class BenchmarkRunner:
         dimension: str = "overworld",
         seed: int = 12345,
     ) -> dict:
+        """Run benchmark: start server, generate chunks, measure perf.
+
+        Args:
+            java_bin: Path to java binary.
+            server_jar: Path to server JAR.
+            server_dir: Server directory.
+            radius: Generation radius in chunks.
+            dimension: Dimension name.
+            seed: World seed.
+
+        Returns: Dict with chunks_per_second, duration_seconds, chunks_generated.
+        """
         import os
         import subprocess
 
@@ -57,6 +71,7 @@ class BenchmarkRunner:
         proc = subprocess.Popen(
             cmd,
             cwd=server_dir,
+            stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
@@ -89,7 +104,14 @@ class BenchmarkRunner:
             rcon = RCONConnection("127.0.0.1", port=rcon_port, password=rcon_password)
             if not rcon.connect(retries=10, delay=2.0):
                 print("  RCON connection failed")
-                return
+                chunks_per_second = 0
+                gen_duration = 0
+                total_chunks = 0
+                return {
+                    "chunks_per_second": 0.0,
+                    "duration_seconds": 0.0,
+                    "chunks_generated": 0,
+                }
             rcon.run("chunky", "start", dimension, "0", "0", str(radius))
 
             gen_start = time.time()
@@ -130,6 +152,13 @@ class BenchmarkRunner:
         return result
 
     def submit(self, result: dict) -> dict:
+        """Submit benchmark result to server.
+
+        Args:
+            result: Benchmark result dict.
+
+        Returns: Server response dict.
+        """
         with httpx.Client(follow_redirects=True, timeout=30) as client:
             resp = client.post(
                 f"{self.server_url}/benchmark",

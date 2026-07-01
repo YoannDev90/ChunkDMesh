@@ -10,7 +10,19 @@ import httpx
 
 
 def send_request(url: str, method: str = "GET", payload=None, headers=None):
-    with httpx.Client(timeout=120) as client:
+    """Send HTTP request with timeout and redirect support.
+
+    Args:
+        url: Target URL.
+        method: HTTP method (GET, POST, PUT).
+        payload: Optional JSON body.
+        headers: Optional HTTP headers.
+
+    Returns: httpx Response.
+
+    Raises: ValueError for unsupported method.
+    """
+    with httpx.Client(timeout=120, follow_redirects=True) as client:
         if method == "GET":
             return client.get(url, headers=headers)
         elif method == "POST":
@@ -22,6 +34,14 @@ def send_request(url: str, method: str = "GET", payload=None, headers=None):
 
 
 def region_dir_for_dim(server_dir: Path, dimension: str) -> Path:
+    """Resolve region directory path for given dimension.
+
+    Args:
+        server_dir: Root server directory.
+        dimension: Dimension name (overworld, nether, end).
+
+    Returns: Path to region folder.
+    """
     if dimension in ("nether", "the_nether", "minecraft:the_nether"):
         return server_dir / "world" / "DIM-1" / "region"
     elif dimension in ("end", "the_end", "minecraft:the_end"):
@@ -150,6 +170,20 @@ def run_work_loop(
 def _run_chunky(
     chunky, rcon, x1, z1, x2, z2, shape, dimension, region_dir, region_label, log_fn, set_progress_fn, expected_chunks
 ):
+    """Run Chunky generation for a region and poll until complete.
+
+    Args:
+        chunky: ChunkyController instance.
+        rcon: RCON connection.
+        x1, z1, x2, z2: Corner coordinates.
+        shape: Generation shape.
+        dimension: Dimension name.
+        region_dir: Region output directory.
+        region_label: Human-readable region label.
+        log_fn: Log callback.
+        set_progress_fn: Progress update callback.
+        expected_chunks: Expected chunk count.
+    """
     import time as _time
 
     from chunky_parser import parse_chunky_progress
@@ -236,6 +270,20 @@ def _run_chunky(
 def _upload_and_submit(
     server_url, auth_headers, batch_id, region_dir, rx, rz, rcon, uploader, region_label, expected_chunks, log_fn
 ):
+    """Upload generated .mca files and submit hashes to server.
+
+    Args:
+        server_url: Server base URL.
+        auth_headers: Authentication headers.
+        batch_id: Current batch ID.
+        region_dir: Region directory.
+        rx, rz: Region coordinates.
+        rcon: RCON connection.
+        uploader: RegionUploader instance.
+        region_label: Human-readable label.
+        expected_chunks: Expected chunk count.
+        log_fn: Log callback.
+    """
     import time as _time
 
     log_fn("💾", "Saving world...")
