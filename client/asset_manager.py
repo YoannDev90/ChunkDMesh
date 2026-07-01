@@ -234,43 +234,25 @@ class AssetManager:
         return pw
 
     def write_server_properties(self, seed=None) -> Path:
-        """Write server.properties with RCON enabled and given seed.
+        """Generate and write server.properties, overwriting any existing file.
 
         Args:
             seed: Optional world seed.
 
         Returns: Path to written properties file.
         """
+        from server_properties import ServerProperties
+
         server_dir = self.work_dir / "server"
         server_dir.mkdir(parents=True, exist_ok=True)
 
         rcon_password = self.get_rcon_password()
 
-        props = {
-            "level-name": "world",
-            "level-seed": str(seed) if seed is not None else "0",
-            "gamemode": "creative",
-            "spawn-protection": "0",
-            "max-tick-time": "60000",
-            "generator-settings": "{}",
-            "require-resource-pack": "false",
-            "spawn-monsters": "false",
-            "spawn-animals": "false",
-            "spawn-npcs": "false",
-            "view-distance": "8",
-            "enable-rcon": "true",
-            "rcon.port": "25575",
-            "rcon.password": rcon_password,
-            "broadcast-console-to-ops": "false",
-            "broadcast-rcon-to-ops": "false",
-            "online-mode": "false",
-        }
-        props_path = server_dir / "server.properties"
-        with open(props_path, "w") as f:
-            for k, v in props.items():
-                f.write(f"{k}={v}\n")
-
-        return props_path
+        props = ServerProperties(
+            level_seed=str(seed) if seed is not None else "0",
+            rcon_password=rcon_password,
+        )
+        return props.write(server_dir / "server.properties")
 
     def setup_server_dir(self, mc_version: str, loader: str, loader_version: str) -> Path:
         """Create server directory and EULA file.

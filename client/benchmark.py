@@ -2,6 +2,7 @@
 
 import secrets
 import time
+from pathlib import Path
 
 import httpx
 
@@ -35,28 +36,21 @@ class BenchmarkRunner:
 
         Returns: Dict with chunks_per_second, duration_seconds, chunks_generated.
         """
-        import os
         import subprocess
 
         print(f"Running benchmark: radius={radius}, seed={seed}")
 
         rcon_password = secrets.token_hex(16)
 
-        # Write server.properties with random RCON password
-        props_path = os.path.join(server_dir, "server.properties")
-        with open(props_path, "w") as f:
-            f.write("level-name=world\n")
-            f.write(f"level-seed={seed}\n")
-            f.write("enable-rcon=true\n")
-            f.write("rcon.port=25575\n")
-            f.write(f"rcon.password={rcon_password}\n")
-            f.write("online-mode=false\n")
-            f.write("gamemode=creative\n")
-            f.write("spawn-protection=0\n")
-            f.write("spawn-monsters=false\n")
-            f.write("spawn-animals=false\n")
-            f.write("spawn-npcs=false\n")
-            f.write("view-distance=8\n")
+        from server_properties import ServerProperties
+
+        props = ServerProperties(
+            level_seed=str(seed),
+            rcon_password=rcon_password,
+            max_players="20",
+            view_distance="8",
+        )
+        props.write(Path(server_dir) / "server.properties")
 
         cmd = [
             java_bin,
