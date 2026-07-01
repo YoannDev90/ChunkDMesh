@@ -22,8 +22,10 @@ templates = Jinja2Templates(directory=str(_SRV / "templates"))
 _map_generator = None
 _map_generator_lock = threading.Lock()
 
-# Pre-generated overview image (zoom 0-4 all return this)
-_overview_cache: bytes | None = None
+# Overview cache: image + metadata (bounds + resolution at full scale)
+_overview_cache: tuple[bytes, int, int, int, int, int, int] | None = None
+# (png_data, full_w, full_h, min_chunk_x, max_chunk_x, min_chunk_z, max_chunk_z)
+
 _overview_lock = threading.Lock()
 
 
@@ -59,11 +61,11 @@ def _init_map_generator():
         return _map_generator
 
 
-def _build_overview_image(cache_dir: Path) -> bytes | None:
-    """Build a single overview PNG from all zoom-5 tiles.
+def _build_overview_image(cache_dir: Path) -> tuple[bytes, int, int, int, int, int, int] | None:
+    """Build overview from all zoom-5 tiles.
 
-    Assembles all tiles at full resolution, then downscales to fit max_dim.
-    Returns PNG bytes.
+    Returns (png_data, full_w, full_h, min_cx, max_cx, min_cz, max_cz)
+    where full_w/h is pixel size before downscale (used for coordinate mapping).
     """
     try:
         from PIL import Image
@@ -74,10 +76,9 @@ def _build_overview_image(cache_dir: Path) -> bytes | None:
     if not tile_files:
         return None
 
-    # Parse tile coords
     tiles = []
     for f in tile_files:
-        name = f.stem  # z5_x123_z456
+        name = f.stem
         parts = name.split("_")
         try:
             tx = int(parts[1].removeprefix("x"))
@@ -89,21 +90,18 @@ def _build_overview_image(cache_dir: Path) -> bytes | None:
     if not tiles:
         return None
 
-    # Determine tile size from first tile
     sample = Image.open(tiles[0][2])
     tile_w, tile_h = sample.size
     sample.close()
 
-    # Bounding box
-    min_x = min(t[0] for t in tiles)
-    max_x = max(t[0] for t in tiles)
-    min_z = min(t[1] for t in tiles)
-    max_z = max(t[1] for t in tiles)
+    min_cx = min(t[0] for t in tiles)
+    max_cx = max(t[0] for t in tiles)
+    min_cz = min(t[1] for t in tiles)
+    max_cz = max(t[1] for t in tiles)
 
-    cols = max_x - min_x + 1
-    rows = max_z - min_z + 1
+    cols = max_cx - min_cx + 1
+    rows = max_cz - min_cz + 1
 
-    # Assemble at full resolution first
     full_w = cols * tile_w
     full_h = rows * tile_h
     assembled = Image.new("RGB", (full_w, full_h), (34, 34, 34))
@@ -111,14 +109,13 @@ def _build_overview_image(cache_dir: Path) -> bytes | None:
     for tx, tz, path in tiles:
         try:
             tile_img = Image.open(path)
-            px = (tx - min_x) * tile_w
-            pz = (tz - min_z) * tile_h
+            px = (tx - min_cx) * tile_w
+            pz = (tz - min_cz) * tile_h
             assembled.paste(tile_img, (px, pz))
             tile_img.close()
         except Exception as e:
             logger.warning("Failed to read tile %s: %s", path, e)
 
-    # Downscale to fit max_dim
     max_dim = 512
     if full_w > max_dim or full_h > max_dim:
         scale = min(max_dim / full_w, max_dim / full_h)
@@ -128,11 +125,11 @@ def _build_overview_image(cache_dir: Path) -> bytes | None:
 
     buf = io.BytesIO()
     assembled.save(buf, format="PNG", optimize=True)
-    return buf.getvalue()
+    return (buf.getvalue(), full_w, full_h, min_cx, max_cx, min_cz, max_cz)
 
 
-def _get_or_build_overview(cache_dir: Path) -> bytes | None:
-    """Get cached overview or build it."""
+def _get_or_build_overview(cache_dir: Path) -> tuple[bytes, int, int, int, int, int, int] | None:
+    """Get cached overview + metadata."""
     global _overview_cache
 
     if _overview_cache is not None:
@@ -143,20 +140,89 @@ def _get_or_build_overview(cache_dir: Path) -> bytes | None:
             return _overview_cache
 
         overview_path = cache_dir / "_overview.png"
-        if overview_path.exists():
-            _overview_cache = overview_path.read_bytes()
-            return _overview_cache
+        meta_path = cache_dir / "_overview_meta.txt"
 
-        data = _build_overview_image(cache_dir)
-        if data is None:
+        if overview_path.exists() and meta_path.exists():
+            try:
+                parts = meta_path.read_text().strip().split(",")
+                fw, fh, mnx, mxx, mnz, mxz = map(int, parts)
+                _overview_cache = (overview_path.read_bytes(), fw, fh, mnx, mxx, mnz, mxz)
+                return _overview_cache
+            except Exception:
+                pass
+
+        result = _build_overview_image(cache_dir)
+        if result is None:
             return None
 
-        _overview_cache = data
+        data, fw, fh, mnx, mxx, mnz, mxz = result
+        _overview_cache = result
         try:
             overview_path.write_bytes(data)
+            meta_path.write_text(f"{fw},{fh},{mnx},{mxx},{mnz},{mxz}")
         except Exception as e:
             logger.warning("Failed to write overview cache: %s", e)
-        return data
+        return result
+
+
+def _extract_tile_from_overview(
+    zoom: int, tx: int, tz: int, cache_dir: Path,
+) -> bytes | None:
+    """Extract a 256x256 tile for zoom < 5 from the overview image."""
+    ov = _get_or_build_overview(cache_dir)
+    if ov is None:
+        return None
+
+    from PIL import Image
+
+    ov_data, full_w, full_h, min_cx, max_cx, min_cz, max_cz = ov
+    ov_img = Image.open(io.BytesIO(ov_data))
+    ov_w, ov_h = ov_img.size
+
+    # Scale from overview pixels to full-resolution pixels
+    scale_to_full_x = full_w / ov_w
+    scale_to_full_y = full_h / ov_h
+
+    # At zoom z, 1 tile = 2^(9-z) blocks = 2^(5-z) chunks
+    chunks_per_tile = 1 << (5 - zoom)
+    blocks_per_tile = chunks_per_tile * 16
+
+    # Tile (tx, tz) covers blocks [tx * blocks_per_tile, (tx+1) * blocks_per_tile) in X, same for Z
+    block_start_x = tx * blocks_per_tile
+    block_start_z = tz * blocks_per_tile
+
+    # Full-res pixel for block (bx, bz):
+    # pix_x = (bx - min_cx * 16) * (full_w / ((max_cx - min_cx + 1) * 16))
+    # But full_w = (max_cx - min_cx + 1) * 256, so full_w / chunks = 256
+    # And 256 px / 16 blocks = 16 px per block
+    # pix_x = (bx - min_cx * 16) * 16
+    pix_start_x = (block_start_x - min_cx * 16) * 16
+    pix_start_z = (block_start_z - min_cz * 16) * 16
+    pix_size = blocks_per_tile * 16  # pixels at full res
+
+    # Map to overview pixels
+    ov_px_start_x = pix_start_x / scale_to_full_x
+    ov_px_start_z = pix_start_z / scale_to_full_y
+    ov_px_size = pix_size / scale_to_full_x  # same for y since aspect ratio preserved
+
+    # Clamp to overview bounds
+    ov_px_start_x = max(0.0, min(ov_w - 1.0, ov_px_start_x))
+    ov_px_start_z = max(0.0, min(ov_h - 1.0, ov_px_start_z))
+    ov_px_end_x = min(ov_w, ov_px_start_x + ov_px_size)
+    ov_px_end_z = min(ov_h, ov_px_start_z + ov_px_size)
+
+    if ov_px_end_x - ov_px_start_x < 1 or ov_px_end_z - ov_px_start_z < 1:
+        ov_img.close()
+        return None
+
+    region = ov_img.crop((ov_px_start_x, ov_px_start_z, ov_px_end_x, ov_px_end_z))
+    region = region.resize((256, 256), Image.Resampling.LANCZOS)
+
+    buf = io.BytesIO()
+    region.save(buf, format="PNG", optimize=True)
+    region.close()
+    ov_img.close()
+    return buf.getvalue()
 
 
 def invalidate_overview():
@@ -166,6 +232,9 @@ def invalidate_overview():
     overview_path = _DATA / ".map_cache" / "_overview.png"
     if overview_path.exists():
         overview_path.unlink(missing_ok=True)
+    meta_path = _DATA / ".map_cache" / "_overview_meta.txt"
+    if meta_path.exists():
+        meta_path.unlink(missing_ok=True)
 
 
 @router.get("/admin/map", response_class=HTMLResponse)
@@ -203,11 +272,11 @@ async def map_tile(zoom: int, x: int, y: int):
             raise HTTPException(status_code=404, detail="Tile not found (client must generate)")
         return Response(content=png, media_type="image/png", headers={"Cache-Control": "public, max-age=3600"})
 
-    # Zoom 0-4: serve the single overview image
-    overview = _get_or_build_overview(cache_dir)
-    if overview is None:
+    # Zoom 0-4: extract correct sub-region from overview
+    tile_png = _extract_tile_from_overview(zoom, x, y, cache_dir)
+    if tile_png is None:
         raise HTTPException(status_code=404, detail="No tiles available for overview")
-    return Response(content=overview, media_type="image/png", headers={"Cache-Control": "public, max-age=600"})
+    return Response(content=tile_png, media_type="image/png", headers={"Cache-Control": "public, max-age=600"})
 
 
 @router.get("/admin/map/hover/{chunk_x}/{chunk_z}")
