@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
-_ZSTD_MAX_RATIO = 128
+_ZSTD_MAX_RATIO = 16
 
 
 def _safe_decompress(body: bytes, max_decompressed: int) -> bytes:

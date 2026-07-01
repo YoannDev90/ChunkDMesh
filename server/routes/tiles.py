@@ -21,7 +21,7 @@ _DATA = _SRV.parent / "data"
 
 router = APIRouter(prefix="/tiles", tags=["tiles"])
 
-_ZSTD_MAX_RATIO = 128
+_ZSTD_MAX_RATIO = 16
 
 
 def _safe_decompress(body: bytes, max_decompressed: int) -> bytes:
