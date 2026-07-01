@@ -1,9 +1,12 @@
 import hashlib
 import json
+import struct
 from pathlib import Path
 
 import httpx
 import zstd
+
+_BATCH_SIZE = 50
 
 
 class RegionUploader:
@@ -55,32 +58,36 @@ class RegionUploader:
             resp.raise_for_status()
             return resp.json()
 
-    def upload_tile(self, chunk_x: int, chunk_z: int, png_path: Path) -> dict:
-        """Upload a pre-rendered PNG tile to the server."""
-        raw = png_path.read_bytes()
-        compressed = self.compress_zstd(raw)
+    @staticmethod
+    def _make_binary_payload(tiles: list[tuple[int, int, bytes]]) -> bytes:
+        """Pack tiles into binary format: (chunk_x:i32, chunk_z:i32, size:u32, png_data)..."""
+        buf = bytearray()
+        for cx, cz, png in tiles:
+            buf.extend(struct.pack("<iiI", cx, cz, len(png)))
+            buf.extend(png)
+        return bytes(buf)
 
-        with httpx.Client(follow_redirects=True, timeout=30) as client:
+    def _upload_batch(self, tiles: list[tuple[int, int, bytes]]) -> dict:
+        """Send a batch of tiles to the server."""
+        payload = self._make_binary_payload(tiles)
+        compressed = self.compress_zstd(payload)
+
+        with httpx.Client(follow_redirects=True, timeout=120) as client:
             resp = client.put(
-                f"{self.server_url}/tiles/upload",
+                f"{self.server_url}/tiles/upload/batch",
                 content=compressed,
-                headers={
-                    **self.headers,
-                    "Content-Type": "image/png",
-                    "X-Chunk-X": str(chunk_x),
-                    "X-Chunk-Z": str(chunk_z),
-                },
+                headers={**self.headers, "Content-Type": "application/octet-stream"},
             )
             resp.raise_for_status()
             return resp.json()
 
     def upload_tiles_batch(self, tile_paths: dict[str, Path], output_dir: Path) -> dict:
-        """Upload multiple PNG tiles. tile_paths maps 'chunk_{cx}_{cz}' -> Path."""
+        """Upload multiple PNG tiles in batches of 50."""
         uploaded = 0
         errors = []
+        pending: list[tuple[int, int, bytes]] = []
 
         for stem, png_path in tile_paths.items():
-            # Parse chunk coords from stem: chunk_{cx}_{cz}
             parts = stem.split("_")
             if len(parts) != 3:
                 continue
@@ -90,11 +97,24 @@ class RegionUploader:
             except ValueError:
                 continue
 
+            png_data = png_path.read_bytes()
+            pending.append((chunk_x, chunk_z, png_data))
+
+            if len(pending) >= _BATCH_SIZE:
+                try:
+                    result = self._upload_batch(pending)
+                    uploaded += result.get("count", len(pending))
+                except Exception as e:
+                    errors.append(f"batch of {len(pending)}: {e}")
+                pending.clear()
+
+        # Upload remaining tiles
+        if pending:
             try:
-                self.upload_tile(chunk_x, chunk_z, png_path)
-                uploaded += 1
+                result = self._upload_batch(pending)
+                uploaded += result.get("count", len(pending))
             except Exception as e:
-                errors.append(f"{stem}: {e}")
+                errors.append(f"final batch of {len(pending)}: {e}")
 
         return {"uploaded": uploaded, "errors": errors}
 

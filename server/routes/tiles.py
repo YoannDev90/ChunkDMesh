@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import struct
 import subprocess
 import sys
 from pathlib import Path
@@ -85,6 +86,53 @@ async def upload_tile(request: Request, token_data: dict = Depends(verify_token)
 
     logger.info("Tile uploaded: chunk_%d_%d (%d bytes)", chunk_x, chunk_z, len(png_data))
     return JSONResponse({"status": "ok", "chunk_x": chunk_x, "chunk_z": chunk_z, "size": len(png_data)})
+
+
+@router.put("/upload/batch")
+async def upload_tiles_batch(request: Request, token_data: dict = Depends(verify_token)):
+    """Receive multiple pre-rendered PNG tiles in one request.
+
+    Format: zstd-compressed binary with repeated 12-byte header + PNG data:
+      chunk_x: i32 (4 bytes, little-endian)
+      chunk_z: i32 (4 bytes, little-endian)
+      size:    u32 (4 bytes, little-endian)
+      png_data: size bytes
+    """
+    body = await request.body()
+    try:
+        data = zstd.decompress(body)
+    except Exception:
+        data = body
+
+    from map_generator import MapConfig
+
+    map_cfg = MapConfig.from_flat_regions_dir(str(_DATA / "regions"))
+    cache_dir = Path(map_cfg.tile_cache_dir)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+
+    offset = 0
+    count = 0
+    while offset + 12 <= len(data):
+        chunk_x = struct.unpack_from("<i", data, offset)[0]
+        chunk_z = struct.unpack_from("<i", data, offset + 4)[0]
+        size = struct.unpack_from("<I", data, offset + 8)[0]
+        offset += 12
+        if offset + size > len(data):
+            break
+        png_data = data[offset : offset + size]
+        offset += size
+
+        tile_path = cache_dir / f"z5_x{chunk_x}_z{chunk_z}.png"
+        tile_path.write_bytes(png_data)
+        count += 1
+
+    # Invalidate overview once for the whole batch
+    from routes.map import invalidate_overview
+
+    invalidate_overview()
+
+    logger.info("Batch upload: %d tiles (%d bytes compressed)", count, len(body))
+    return JSONResponse({"status": "ok", "count": count, "bytes": len(body)})
 
 
 @router.put("/hover/{chunk_x}/{chunk_z}")
