@@ -136,8 +136,13 @@ class Provisioner:
         }
         return _map.get(target, target)
 
-    def setup_mcmap(self, work_dir: Path) -> Path | None:
-        """Set up the mcmap binary: ask user to compile or download pre-built.
+    def setup_mcmap(self, work_dir: Path, *, auto_compile: bool | None = None) -> Path | None:
+        """Set up the mcmap binary: compile or download pre-built.
+
+        Args:
+            work_dir: Working directory for the binary.
+            auto_compile: True = compile without asking, False = download without asking,
+                          None = ask user interactively (use only in CLI mode).
 
         Returns Path to mcmap binary, or None if setup failed/skipped.
         """
@@ -152,14 +157,23 @@ class Provisioner:
         has_rust = self._detect_rust_toolchain()
         target = self._detect_platform()
 
+        # Determine whether to compile
+        compile_it = False
         if has_rust:
-            self.log("🦀", "Rust toolchain detected")
-            choice = self._ask_user_choice(
-                "Compile mcmap from source for optimal performance? [Y/n] ",
-                default=True,
-            )
-            if choice:
-                return self._compile_from_source(work_dir, mcmap_path)
+            if auto_compile is None:
+                self.log("🦀", "Rust toolchain detected")
+                compile_it = self._ask_user_choice(
+                    "Compile mcmap from source for optimal performance? [Y/n] ",
+                    default=True,
+                )
+            elif auto_compile:
+                self.log("🦀", "Compiling mcmap from source (auto)...")
+                compile_it = True
+            else:
+                self.log("🦀", "Rust detected but downloading pre-built (faster)")
+
+        if compile_it:
+            return self._compile_from_source(work_dir, mcmap_path)
 
         if target:
             download_name = self._platform_to_download_name(target)

@@ -35,7 +35,7 @@ from monitor import export_otel_console, monitor, sample_system  # noqa: E402
 HEARTBEAT_INTERVAL = 15
 
 
-def main(bg: bool = False):
+def main(bg: bool = False, compile_mcmap: bool = False):
     from mc_lifecycle import MCLifecycle
     from provisioner import Provisioner
     from utils import ResourceReportFormat, get_available_resources_averaged
@@ -141,7 +141,7 @@ def main(bg: bool = False):
 
     # Set up mcmap binary (compile from source or download pre-built)
     log("🗺️ ", "Setting up mcmap...")
-    provisioner.setup_mcmap(work_dir)
+    provisioner.setup_mcmap(work_dir, auto_compile=compile_mcmap)
 
     # ── MC lifecycle ────────────────────────────────────────
     lifecycle = MCLifecycle(server_dir, java_bin, jar_path, asset_mgr, seed, mc_version, log_fn=log)
@@ -269,5 +269,6 @@ def _wait_for_server(url: str, max_wait: float = 120.0) -> bool:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="ChunkDMesh Client")
     parser.add_argument("--bg", "--background", action="store_true", help="Run in background mode (no TUI)")
+    parser.add_argument("--compile-mcmap", action="store_true", help="Compile mcmap from source instead of downloading")
     args = parser.parse_args()
-    main(bg=args.bg)
+    main(bg=args.bg, compile_mcmap=args.compile_mcmap)
