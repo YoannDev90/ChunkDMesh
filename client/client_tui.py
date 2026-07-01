@@ -4,9 +4,9 @@ import threading
 import time
 from collections import deque
 
-from monitor import StepSnapshot, SystemSample, monitor, sample_system
+from monitor import StepSnapshot, SystemSample, monitor, sample_cpu_cores, sample_system
 from rich.align import Align
-from rich.console import Console
+from rich.console import Console, Group
 from rich.layout import Layout
 from rich.live import Live
 from rich.panel import Panel
@@ -33,6 +33,8 @@ class ClientTUI:
         self._server_url = ""
         self._running = False
         self._log_offset = 0
+        self._cpu_history: deque = deque(maxlen=60)
+        self._mem_history: deque = deque(maxlen=60)
         self._latest_step: StepSnapshot | None = None
         self._system: SystemSample | None = None
         self._layout: Layout | None = None
@@ -212,16 +214,118 @@ class ClientTUI:
         return Panel(table, title=f"Log{scroll_info}", border_style="magenta")
 
     def _render_system(self) -> Panel:
-        """Render system resource panel with CPU load and memory."""
+        """Render btop-style system resource panel with CPU cores, memory, and history."""
         sys = sample_system()
+        cores = sample_cpu_cores()
         with self._lock:
             self._system = sys
-        table = Table.grid(padding=(0, 2))
-        table.add_column(style="bold")
-        table.add_column()
-        table.add_row("CPU Load", f"{sys.cpu_load_1:.2f} / {sys.cpu_load_5:.2f} / {sys.cpu_load_15:.2f}")
-        table.add_row("Memory", f"{sys.mem_avail_gb:.1f}/{sys.mem_total_gb:.1f} GB ({sys.mem_used_pct:.0f}%)")
-        return Panel(table, title="System", border_style="cyan")
+            self._cpu_history.append((time.time(), sys.cpu_load_1))
+            self._mem_history.append((time.time(), sys.mem_used_pct))
+            cpu_hist = list(self._cpu_history)
+
+        blocks = " ░▒▓█"
+        bar_w = 20
+
+        def _bar(pct: float, width: int = bar_w) -> str:
+            filled = int(pct / 100 * width)
+            return blocks[-1] * filled + blocks[1] * (width - filled)
+
+        def _color_pct(pct: float) -> str:
+            if pct < 50:
+                return "green"
+            if pct < 80:
+                return "yellow"
+            return "red"
+
+        lines = []
+
+        # CPU total bar
+        cpu_pct = sys.cpu_total_pct if sys.cpu_total_pct > 0 else min(sys.cpu_load_1 * 25, 100)
+        cpu_color = _color_pct(cpu_pct)
+        lines.append(
+            Text.assemble(
+                (" CPU ", "bold cyan"),
+                (_bar(cpu_pct), cpu_color),
+                (f" {cpu_pct:5.1f}%", f"bold {cpu_color}"),
+            )
+        )
+
+        # Per-core bars (compact, 2 per line)
+        if cores:
+            core_bar_w = 12
+            for i in range(0, len(cores), 2):
+                parts = []
+                for j in range(2):
+                    if i + j < len(cores):
+                        c = cores[i + j]
+                        filled = int(c / 100 * core_bar_w)
+                        bar = blocks[-1] * filled + blocks[1] * (core_bar_w - filled)
+                        col = _color_pct(c)
+                        parts.append(
+                            Text.assemble(
+                                (f"cpu{i + j:>2} ", "dim"),
+                                (bar, col),
+                                (f" {c:4.0f}%", f"dim {col}"),
+                            )
+                        )
+                line = Text()
+                for p in parts:
+                    line.append_text(p)
+                    line.append("  ")
+                lines.append(line)
+
+        # Memory bar
+        if sys.mem_total_gb > 0:
+            mem_color = _color_pct(sys.mem_used_pct)
+            used = sys.mem_used_gb
+            bufs = sys.mem_buffers_gb
+            cached = sys.mem_cached_gb
+            lines.append(
+                Text.assemble(
+                    (" MEM ", "bold cyan"),
+                    (_bar(sys.mem_used_pct), mem_color),
+                    (f" {sys.mem_used_pct:5.1f}%", f"bold {mem_color}"),
+                )
+            )
+            lines.append(
+                Text.assemble(
+                    ("     ", "dim"),
+                    (f"{used:.1f}G", "white"),
+                    (" used  ", "dim"),
+                    (f"{bufs:.1f}G", "blue"),
+                    (" buf  ", "dim"),
+                    (f"{cached:.1f}G", "magenta"),
+                    (" cache ", "dim"),
+                    (f"/ {sys.mem_total_gb:.1f}G", "dim"),
+                )
+            )
+
+        # CPU load
+        lines.append(
+            Text.assemble(
+                ("Load ", "dim"),
+                (f"{sys.cpu_load_1:.2f}", "cyan"),
+                (" / ", "dim"),
+                (f"{sys.cpu_load_5:.2f}", "cyan"),
+                (" / ", "dim"),
+                (f"{sys.cpu_load_15:.2f}", "cyan"),
+            )
+        )
+
+        # Mini history sparkline (last 30 samples)
+        if cpu_hist:
+            recent = [v for _, v in cpu_hist[-30:]]
+            spark_w = 30
+            spark_blocks = " ▁▂▃▄▅▆▇█"
+            spark = ""
+            for v in recent[-spark_w:]:
+                idx = min(int(v / 100 * (len(spark_blocks) - 1)), len(spark_blocks) - 1)
+                spark += spark_blocks[idx]
+            spark = spark.rjust(spark_w)
+            lines.append(Text.assemble(("History ", "dim"), (spark, "cyan")))
+
+        content = Group(*lines)
+        return Panel(content, title=" SYSTEM ", border_style="cyan", expand=True)
 
     def _start_key_reader(self):
         """Start background thread to read arrow keys for log scrolling."""
@@ -243,19 +347,18 @@ class ClientTUI:
                     while self._running:
                         if select.select([sys.stdin], [], [], 0.1)[0]:
                             ch = os.read(fd, 1)
-                            if ch == b"\x1b":
-                                if select.select([sys.stdin], [], [], 0.05)[0]:
-                                    seq = os.read(fd, 2)
-                                    with self._lock:
-                                        max_off = max(0, len(self._log_buffer) - 15)
-                                        if seq == b"[A":
-                                            self._log_offset = min(self._log_offset + 1, max_off)
-                                        elif seq == b"[B":
-                                            self._log_offset = max(self._log_offset - 1, 0)
-                                        elif seq == b"[H":
-                                            self._log_offset = max_off
-                                        elif seq == b"[F":
-                                            self._log_offset = 0
+                            if ch == b"\x1b" and select.select([sys.stdin], [], [], 0.05)[0]:
+                                seq = os.read(fd, 2)
+                                with self._lock:
+                                    max_off = max(0, len(self._log_buffer) - 15)
+                                    if seq == b"[A":
+                                        self._log_offset = min(self._log_offset + 1, max_off)
+                                    elif seq == b"[B":
+                                        self._log_offset = max(self._log_offset - 1, 0)
+                                    elif seq == b"[H":
+                                        self._log_offset = max_off
+                                    elif seq == b"[F":
+                                        self._log_offset = 0
                 finally:
                     termios.tcsetattr(fd, termios.TCSADRAIN, old)
             except Exception:
@@ -273,6 +376,7 @@ class ClientTUI:
 
         # Disable mouse tracking at terminal level
         import sys as _sys
+
         _sys.stdout.write("\033[?1000l\033[?1002l\033[?1003l\033[?1006l")
         _sys.stdout.flush()
 

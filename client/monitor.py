@@ -13,6 +13,7 @@ SELF_STATUS = PROC / "self" / "status"
 SELF_IO = PROC / "self" / "io"
 PROC_LOADAVG = PROC / "loadavg"
 PROC_MEMINFO = PROC / "meminfo"
+PROC_STAT = PROC / "stat"
 
 
 @dataclass
@@ -38,6 +39,11 @@ class SystemSample:
     mem_total_gb: float = 0.0
     mem_avail_gb: float = 0.0
     mem_used_pct: float = 0.0
+    cpu_cores: list[float] = field(default_factory=list)
+    cpu_total_pct: float = 0.0
+    mem_used_gb: float = 0.0
+    mem_buffers_gb: float = 0.0
+    mem_cached_gb: float = 0.0
 
 
 def _read_self_stat() -> dict:
@@ -125,6 +131,8 @@ def sample_system() -> SystemSample:
     load = (0.0, 0.0, 0.0)
     mem_total = 0
     mem_avail = 0
+    mem_buffers = 0
+    mem_cached = 0
     try:
         load_raw = PROC_LOADAVG.read_text()
         parts = load_raw.split()
@@ -138,6 +146,10 @@ def sample_system() -> SystemSample:
                 mem_total = int(line.split()[1])  # kB
             elif line.startswith("MemAvailable:"):
                 mem_avail = int(line.split()[1])  # kB
+            elif line.startswith("Buffers:"):
+                mem_buffers = int(line.split()[1])
+            elif line.startswith("Cached:"):
+                mem_cached = int(line.split()[1])
     except (FileNotFoundError, ValueError):
         pass
     total_gb = mem_total / (1024 * 1024)
@@ -150,7 +162,56 @@ def sample_system() -> SystemSample:
         mem_total_gb=total_gb,
         mem_avail_gb=avail_gb,
         mem_used_pct=used_pct,
+        mem_used_gb=total_gb - avail_gb,
+        mem_buffers_gb=mem_buffers / (1024 * 1024),
+        mem_cached_gb=mem_cached / (1024 * 1024),
     )
+
+
+_prev_cpu: list[int] | None = None
+
+
+def sample_cpu_cores() -> list[float]:
+    """Read per-core CPU usage from /proc/stat. Returns list of percentages."""
+    global _prev_cpu
+    try:
+        lines = PROC_STAT.read_text().splitlines()
+        cores = []
+        total = []
+        for line in lines:
+            if not line.startswith("cpu"):
+                break
+            parts = line.split()
+            vals = [int(x) for x in parts[1:]]
+            total.append(vals)
+            if parts[0] != "cpu":
+                cores.append(vals)
+        if not cores:
+            return []
+
+        total_now = total[0]
+        total_sum = sum(total_now)
+
+        if _prev_cpu is not None:
+            prev_total_sum = sum(_prev_cpu)
+            total_delta = total_sum - prev_total_sum
+        else:
+            total_delta = 0
+
+        _prev_cpu = total_now
+
+        if total_delta <= 0:
+            return [0.0] * len(cores)
+
+        percents = []
+        for _i, vals in enumerate(cores):
+            idle = vals[3] + (vals[4] if len(vals) > 4 else 0)
+            busy = sum(vals) - idle
+            # Approximate per-core from total delta
+            percents.append(min(busy / max(total_delta / len(cores), 1) * 100, 100.0))
+        return percents
+    except (FileNotFoundError, ValueError, IndexError):
+        return []
 
 
 class StepMonitor:

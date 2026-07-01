@@ -7,7 +7,7 @@ import traceback
 from collections import deque
 
 from client_tui import ClientTUI
-from monitor import monitor, sample_system
+from monitor import monitor, sample_cpu_cores, sample_system
 from rich.console import Console, Group
 from rich.layout import Layout
 from rich.live import Live
@@ -99,24 +99,23 @@ class BothTUI:
                     while self._running:
                         if select.select([sys.stdin], [], [], 0.1)[0]:
                             ch = os.read(fd, 1)
-                            if ch == b"\x1b":
-                                if select.select([sys.stdin], [], [], 0.05)[0]:
-                                    seq = os.read(fd, 2)
-                                    from state import server_state
+                            if ch == b"\x1b" and select.select([sys.stdin], [], [], 0.05)[0]:
+                                seq = os.read(fd, 2)
+                                from state import server_state
 
-                                    client_logs = len(self.client_tui._log_buffer)
-                                    server_logs = len(server_state.recent_logs())
-                                    total = client_logs + server_logs
-                                    max_off = max(0, total - 10)
-                                    with self.client_tui._lock:
-                                        if seq == b"[A":
-                                            self._log_offset = min(self._log_offset + 1, max_off)
-                                        elif seq == b"[B":
-                                            self._log_offset = max(self._log_offset - 1, 0)
-                                        elif seq == b"[H":
-                                            self._log_offset = max_off
-                                        elif seq == b"[F":
-                                            self._log_offset = 0
+                                client_logs = len(self.client_tui._log_buffer)
+                                server_logs = len(server_state.recent_logs())
+                                total = client_logs + server_logs
+                                max_off = max(0, total - 10)
+                                with self.client_tui._lock:
+                                    if seq == b"[A":
+                                        self._log_offset = min(self._log_offset + 1, max_off)
+                                    elif seq == b"[B":
+                                        self._log_offset = max(self._log_offset - 1, 0)
+                                    elif seq == b"[H":
+                                        self._log_offset = max_off
+                                    elif seq == b"[F":
+                                        self._log_offset = 0
                 finally:
                     termios.tcsetattr(fd, termios.TCSADRAIN, old)
             except Exception:
@@ -133,6 +132,7 @@ class BothTUI:
 
         # Disable mouse tracking at terminal level
         import sys as _sys
+
         _sys.stdout.write("\033[?1000l\033[?1002l\033[?1003l\033[?1006l")
         _sys.stdout.flush()
 
@@ -273,47 +273,95 @@ class BothTUI:
     # ── Left: Resource Monitor ────────────────────────────────
 
     def _render_resources(self) -> Panel:
-        """Render system resource monitor with CPU/memory sparklines."""
+        """Render btop-style resource panel with CPU cores, memory, and history."""
         sys = sample_system()
+        cores = sample_cpu_cores()
         self._cpu_history.append(sys.cpu_load_1)
         self._mem_history.append(sys.mem_used_pct)
 
-        # CPU sparkline
-        cpu_bar = self._sparkline(self._cpu_history, max_val=8.0, width=40)
-        cpu_color = "green" if sys.cpu_load_1 < 2 else "yellow" if sys.cpu_load_1 < 4 else "red"
+        blocks = " ░▒▓█"
+        bar_w = 18
 
-        # Memory sparkline
-        mem_bar = self._sparkline(self._mem_history, max_val=100.0, width=40)
-        mem_color = "green" if sys.mem_used_pct < 60 else "yellow" if sys.mem_used_pct < 85 else "red"
+        def _bar(pct: float, width: int = bar_w) -> str:
+            filled = int(pct / 100 * width)
+            return blocks[-1] * filled + blocks[1] * (width - filled)
 
-        # Step info
-        latest = monitor.latest()
-        step_info = Text()
-        if latest:
-            wall_s = latest.wall_s
-            cpu_s = latest.cpu_s
-            rss = latest.rss_kb_delta
-            step_info.append(f"Last: {latest.name}", style="cyan")
-            step_info.append(f"  wall={wall_s:.2f}s", style="dim")
-            step_info.append(f"  cpu={cpu_s:.2f}s", style="dim")
-            step_info.append(f"  rss={rss:+d}K", style="dim")
+        def _color_pct(pct: float) -> str:
+            if pct < 50:
+                return "green"
+            if pct < 80:
+                return "yellow"
+            return "red"
 
-        table = Table.grid(padding=(0, 1), expand=True)
-        table.add_column(width=8, style="bold")
-        table.add_column()
-        table.add_row(
-            Text("CPU", style=cpu_color),
-            Text(f"{cpu_bar} {sys.cpu_load_1:.2f} / {sys.cpu_load_5:.2f} / {sys.cpu_load_15:.2f}", style=cpu_color),
-        )
-        table.add_row(
-            Text("Memory", style=mem_color),
-            Text(
-                f"{mem_bar} {sys.mem_used_pct:.0f}% ({sys.mem_avail_gb:.1f}/{sys.mem_total_gb:.1f} GB)",
-                style=mem_color,
-            ),
+        lines = []
+
+        # CPU total bar
+        cpu_pct = sys.cpu_total_pct if sys.cpu_total_pct > 0 else min(sys.cpu_load_1 * 25, 100)
+        cpu_color = _color_pct(cpu_pct)
+        lines.append(
+            Text.assemble(
+                ("CPU  ", "bold cyan"),
+                (_bar(cpu_pct), cpu_color),
+                (f" {cpu_pct:5.1f}%", f"bold {cpu_color}"),
+                (f"  {sys.cpu_load_1:.2f}/{sys.cpu_load_5:.2f}/{sys.cpu_load_15:.2f}", "dim"),
+            )
         )
 
-        content = Group(table, Text(), step_info)
+        # Per-core bars (compact)
+        if cores:
+            core_bar_w = 10
+            for i in range(0, len(cores), 2):
+                parts = []
+                for j in range(2):
+                    if i + j < len(cores):
+                        c = cores[i + j]
+                        filled = int(c / 100 * core_bar_w)
+                        bar = blocks[-1] * filled + blocks[1] * (core_bar_w - filled)
+                        col = _color_pct(c)
+                        parts.append(
+                            Text.assemble(
+                                (f"c{i + j:<2}", "dim"),
+                                (bar, col),
+                                (f"{c:3.0f}%", f"dim {col}"),
+                            )
+                        )
+                line = Text()
+                for p in parts:
+                    line.append_text(p)
+                    line.append(" ")
+                lines.append(line)
+
+        # Memory bar
+        if sys.mem_total_gb > 0:
+            mem_color = _color_pct(sys.mem_used_pct)
+            lines.append(
+                Text.assemble(
+                    ("MEM  ", "bold cyan"),
+                    (_bar(sys.mem_used_pct), mem_color),
+                    (f" {sys.mem_used_pct:5.1f}%", f"bold {mem_color}"),
+                    (f"  {sys.mem_used_gb:.1f}/{sys.mem_total_gb:.1f}G", "dim"),
+                )
+            )
+            lines.append(
+                Text.assemble(
+                    ("     ", "dim"),
+                    (f"buf:{sys.mem_buffers_gb:.1f}G", "blue"),
+                    ("  ", "dim"),
+                    (f"cache:{sys.mem_cached_gb:.1f}G", "magenta"),
+                )
+            )
+
+        # History sparkline
+        if self._cpu_history:
+            spark_blocks = " ▁▂▃▄▅▆▇█"
+            recent = list(self._cpu_history)[-30:]
+            spark = ""
+            for v in recent:
+                idx = min(int(v / 100 * (len(spark_blocks) - 1)), len(spark_blocks) - 1)
+                spark += spark_blocks[idx]
+            lines.append(Text.assemble(("Hist  ", "dim"), (spark.rjust(30), "cyan")))
+
+        content = Group(*lines)
         return Panel(content, title=" RESOURCES ", border_style="cyan", expand=True)
 
     @staticmethod
