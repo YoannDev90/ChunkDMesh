@@ -21,7 +21,7 @@ class ClientTUI:
     MAX_LOG = 200
 
     def __init__(self):
-        self.console = Console(mouse=False)
+        self.console = Console()
         self._log_buffer: deque = deque(maxlen=self.MAX_LOG)
         self._lock = threading.Lock()
         self._status = "initializing"

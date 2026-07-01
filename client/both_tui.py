@@ -60,7 +60,7 @@ class BothTUI:
         self._running = False
         self._client_error: str | None = None
         self._client_done = False
-        self._console = Console(mouse=False, file=console_file) if console_file else Console(mouse=False)
+        self._console = Console(file=console_file) if console_file else Console()
         self._progress = Progress(
             BarColumn(bar_width=None),
             TextColumn("[progress.percentage]{task.percentage:>5.1f}%"),
