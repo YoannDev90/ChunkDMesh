@@ -9,6 +9,7 @@ use crate::shading::ShadingConfig;
 pub struct TilerConfig {
     pub water_overlay_color: [u8; 3],
     pub water_overlay_blend: f32,
+    pub biome_tint_blend: f32,
     pub shading: ShadingConfig,
     pub enable_shading: bool,
     pub enable_biome_tint: bool,
@@ -16,11 +17,12 @@ pub struct TilerConfig {
 }
 
 impl Default for TilerConfig {
-    /// Default config: blue water overlay at 55% blend, shading/biome/waterflow enabled.
+    /// Default config: blue water overlay at 75% blend, shading/biome/waterflow enabled.
     fn default() -> Self {
         TilerConfig {
             water_overlay_color: [40, 100, 220],
-            water_overlay_blend: 0.6,
+            water_overlay_blend: 0.75,
+            biome_tint_blend: 0.55,
             shading: ShadingConfig::default(),
             enable_shading: true,
             enable_biome_tint: true,

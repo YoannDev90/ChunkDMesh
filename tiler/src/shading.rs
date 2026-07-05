@@ -14,13 +14,13 @@ pub struct ShadingConfig {
 }
 
 impl Default for ShadingConfig {
-    /// Default shading: NW light, 2x height exaggeration, 70% shadow strength, 60% cave darkness.
+    /// Default shading: NW light, 3x height exaggeration, 80% shadow strength, 70% cave darkness.
     fn default() -> Self {
         ShadingConfig {
             light_direction: (-0.5, 0.7, 0.5),
-            height_exaggeration: 2.0,
-            shadow_strength: 0.7,
-            cave_darkness: 0.6,
+            height_exaggeration: 3.0,
+            shadow_strength: 0.8,
+            cave_darkness: 0.7,
         }
     }
 }

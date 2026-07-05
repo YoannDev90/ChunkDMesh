@@ -13,10 +13,11 @@ pub struct RenderConfig {
     pub shading: ShadingConfig,
     pub water_overlay_color: Rgb,
     pub water_overlay_blend: f32,
+    pub biome_tint_blend: f32,
 }
 
 impl Default for RenderConfig {
-    /// Default render config: shading/biome/waterflow on, blue water overlay at 35%.
+    /// Default render config: shading/biome/waterflow on, blue water overlay at 75%.
     fn default() -> Self {
         RenderConfig {
             enable_shading: true,
@@ -24,7 +25,8 @@ impl Default for RenderConfig {
             enable_waterflow: true,
             shading: ShadingConfig::default(),
             water_overlay_color: Rgb::new(40, 100, 220),
-            water_overlay_blend: 0.55,
+            water_overlay_blend: 0.75,
+            biome_tint_blend: 0.55,
         }
     }
 }
@@ -40,6 +42,7 @@ impl From<&crate::config::TilerConfig> for RenderConfig {
             shading: cfg.shading.clone(),
             water_overlay_color: Rgb::new(c[0], c[1], c[2]),
             water_overlay_blend: cfg.water_overlay_blend,
+            biome_tint_blend: cfg.biome_tint_blend,
         }
     }
 }
@@ -72,7 +75,7 @@ fn build_surface_colors(
                 && biome_tint_blocks.contains(block_name)
             {
                 let biome_color = biome_palette.get_biome_color(&terrain.surface_biomes[x][z]);
-                color = color.blend(&biome_color, 0.35);
+                color = color.blend(&biome_color, config.biome_tint_blend);
             }
 
             // Water overlay: blue tint on any column containing water.
