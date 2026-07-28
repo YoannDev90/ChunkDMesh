@@ -58,25 +58,26 @@ public sealed class MainForm : Form
             BackgroundColor = _theme.BgCard,
         };
 
+        _sidebarButtons = new List<Button>();
         var sidebarItems = new[]
         {
-            (Icon: "📊", Label: "Dashboard"),
-            (Icon: "⚡", Label: "Performance"),
-            (Icon: "🏆", Label: "Leaderboard"),
-            (Icon: "⚙️", Label: "Settings"),
+            (Icon: "▣", Label: " Dashboard"),
+            (Icon: "▤", Label: " Performance"),
+            (Icon: "▥", Label: " Leaderboard"),
+            (Icon: "⚙", Label: " Settings"),
         };
 
-        _sidebarButtons = new List<Button>();
         for (int i = 0; i < sidebarItems.Length; i++)
         {
             var item = sidebarItems[i];
             var btn = new Button
             {
-                Text = $"{item.Icon}  {item.Label}",
-                Font = Fonts.Sans(11),
+                Text = $"  {item.Icon}{item.Label}",
+                Font = Fonts.Sans(12),
                 BackgroundColor = i == 0 ? _theme.Accent : _theme.BgCard,
                 TextColor = i == 0 ? Color.FromArgb(255, 255, 255) : _theme.TextSecondary,
-                Size = new Size(180, 40),
+                Size = new Size(185, 44),
+                MinimumSize = new Size(185, 44),
             };
             btn.Click += (_, _) => SelectSidebar(i);
             _sidebarButtons.Add(btn);
