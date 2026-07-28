@@ -81,7 +81,7 @@ public sealed class MainForm : Form
                     image = new Bitmap(iconPath);
                 }
                 catch { }
-
+            }
             var nav = new SidebarNavItem(image, item.Label)
             {
                 IsActive = i == 0,
