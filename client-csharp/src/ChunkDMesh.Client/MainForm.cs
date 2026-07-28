@@ -61,10 +61,10 @@ public sealed class MainForm : Form
 
         _sidebarItems = new List<SidebarNavItem>
         {
-            new SidebarNavItem(DrawDashboardIcon) { Label = "Dashboard" },
-            new SidebarNavItem(DrawPerformanceIcon) { Label = "Performance" },
-            new SidebarNavItem(DrawLeaderboardIcon) { Label = "Leaderboard" },
-            new SidebarNavItem(DrawSettingsIcon) { Label = "Settings" },
+            new SidebarNavItem("\uf056e") { Label = "Dashboard" },
+            new SidebarNavItem("\uf04c5") { Label = "Performance" },
+            new SidebarNavItem("\uf0538") { Label = "Leaderboard" },
+            new SidebarNavItem("\uf0493") { Label = "Settings" },
         };
 
         for (int i = 0; i < _sidebarItems.Count; i++)
@@ -254,73 +254,25 @@ public sealed class MainForm : Form
 
     #region Sidebar Icons (drawn with Eto.Drawing primitives)
 
-    private static void DrawDashboardIcon(Graphics g, float x, float cy, ThemeColors theme)
-    {
-        var s = 7f;
-        var gap = 1f;
-        var x0 = x;
-        var x1 = x0 + s + gap;
-        var x2 = x1 + s + gap;
-        var x3 = x2 + s + gap;
-        var yt = cy - s;
-        var yc = cy;
-        var yb = cy + s;
-        g.FillRectangle(new SolidBrush(theme.TextSecondary), x0, yt, s, s);
-        g.FillRectangle(new SolidBrush(theme.TextSecondary), x1, yt, s, s);
-        g.FillRectangle(new SolidBrush(theme.TextMuted), x2, yt, s, s);
-        g.FillRectangle(new SolidBrush(theme.TextMuted), x3, yt, s, s);
-        g.FillRectangle(new SolidBrush(theme.Accent), x0, yc, s, s);
-        g.FillRectangle(new SolidBrush(theme.Accent), x1, yc, s, s);
-        g.FillRectangle(new SolidBrush(theme.TextSecondary), x2, yc, s, s);
-        g.FillRectangle(new SolidBrush(theme.TextSecondary), x3, yc, s, s);
-    }
-
-    private static void DrawPerformanceIcon(Graphics g, float x, float cy, ThemeColors theme)
-    {
-        var pts = new[]
-        {
-            new PointF(x + 1, cy + 7),
-            new PointF(x + 4, cy - 3),
-            new PointF(x + 7, cy + 1),
-            new PointF(x + 10, cy - 7),
-            new PointF(x + 13, cy - 1),
-            new PointF(x + 16, cy + 7),
-        };
-        using var pen = new Pen(theme.Accent, 2f);
-        g.DrawLines(pen, pts);
-    }
-
-    private static void DrawLeaderboardIcon(Graphics g, float x, float cy, ThemeColors theme)
-    {
-        var cx = x + 10;
-        g.DrawLine(new Pen(theme.Warning, 1.5f), cx, cy - 8, cx - 5, cy);
-        g.DrawLine(new Pen(theme.Warning, 1.5f), cx, cy - 8, cx + 5, cy);
-        g.DrawLine(new Pen(theme.Warning, 1.5f), cx - 5, cy, cx + 5, cy);
-        g.DrawLine(new Pen(theme.Warning, 1.5f), cx - 5, cy, cx, cy + 7);
-        g.DrawLine(new Pen(theme.Warning, 1.5f), cx + 5, cy, cx, cy + 7);
-    }
-
-    private static void DrawSettingsIcon(Graphics g, float x, float cy, ThemeColors theme)
-    {
-        var cx = x + 10;
-        var r = 7f;
-        g.DrawEllipse(new Pen(theme.TextSecondary, 2f), cx - r, cy - r, r * 2, r * 2);
-        g.DrawEllipse(new Pen(theme.Accent, 1.5f), cx - r / 2f, cy - r / 2f, r, r);
-        g.FillEllipse(new SolidBrush(theme.Accent), cx - 2, cy - 2, 4, 4);
-    }
+    private static void DrawDashboardIcon(Graphics g, float x, float cy, ThemeColors theme) { }
+    private static void DrawPerformanceIcon(Graphics g, float x, float cy, ThemeColors theme) { }
+    private static void DrawLeaderboardIcon(Graphics g, float x, float cy, ThemeColors theme) { }
+    private static void DrawSettingsIcon(Graphics g, float x, float cy, ThemeColors theme) { }
 
     #endregion
 }
 
 public sealed class SidebarNavItem : Drawable
 {
-    private readonly Action<Graphics, float, float, ThemeColors> _drawIcon;
+    private readonly string _codepoint;
+    private readonly string _family;
     private ThemeColors _theme = ThemeColors.Dark;
     private bool _isActive;
 
-    public SidebarNavItem(Action<Graphics, float, float, ThemeColors> drawIcon)
+    public SidebarNavItem(string codepoint, string family = "Material Design Icons")
     {
-        _drawIcon = drawIcon;
+        _codepoint = codepoint;
+        _family = family;
         Size = new Size(185, 40);
         MinimumSize = new Size(185, 40);
         BackgroundColor = ThemeColors.Dark.BgCard;
@@ -346,13 +298,15 @@ public sealed class SidebarNavItem : Drawable
         var rect = new RectangleF(PointF.Empty, Size);
         g.FillRectangle(new SolidBrush(_isActive ? _theme.Accent : _theme.BgCard), rect);
 
-        _drawIcon(g, 8, rect.Height / 2f, _theme);
+        // MDI icon on the left
+        var iconFont = new Font(new FontFamily(_family), 14);
+        g.DrawText(iconFont, _isActive ? Color.FromArgb(255, 255, 255) : _theme.TextSecondary, 8, (rect.Height - 18) / 2f, _codepoint);
 
+        // Label text to the right of icon
         var labelFont = Fonts.Sans(11);
         var labelColor = _isActive ? Color.FromArgb(255, 255, 255) : _theme.TextSecondary;
-        g.DrawText(labelFont, labelColor, 36, (rect.Height - 12) / 2f, Label);
+        g.DrawText(labelFont, labelColor, 40, (rect.Height - 12) / 2f, Label);
     }
-
     public void ApplyTheme(ThemeColors theme)
     {
         _theme = theme;
