@@ -36,6 +36,8 @@ public sealed class AppController : IDisposable
     public event Action<string>? LogMessage;
     public event Action? StateChanged;
 
+    public void Log(string msg) => LogMessage?.Invoke(msg);
+
     public async Task<bool> TryRestoreSessionAsync(CancellationToken ct = default)
     {
         return await _auth.TryRestoreTokenAsync(ct);

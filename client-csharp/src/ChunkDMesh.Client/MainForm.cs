@@ -1,237 +1,203 @@
 using ChunkDMesh.Client.Models;
 using ChunkDMesh.Client.Services;
-using Eto.Forms;
+using ChunkDMesh.Client.Views;
 using Eto.Drawing;
+using Eto.Forms;
 
 namespace ChunkDMesh.Client;
 
 public sealed class MainForm : Form
 {
     private readonly AppController _ctrl;
-    private readonly TextArea _logBox;
-    private readonly Button _startBtn;
-    private readonly Button _stopBtn;
-    private readonly Label _statusLabel;
-    private readonly Label _regionLabel;
-    private readonly Label _batchesLabel;
-    private readonly Label _pointsLabel;
-    private readonly GridView<LeaderboardEntry> _leaderboardGrid;
-    private readonly UITimer _leaderboardTimer;
-    private readonly UITimer _stateTimer;
+    private readonly MetricsService _metrics;
+    private readonly NotificationService _notifications;
+    private readonly DashboardView _dashboardView;
+    private readonly PerformanceView _performanceView;
+    private readonly LeaderboardView _leaderboardView;
+    private readonly SettingsView _settingsView;
+    private readonly Panel _contentArea;
+    private readonly Label _statusBadge;
+    private readonly ListBox _sidebar;
+    private readonly UITimer _metricsTimer;
+    private ThemeColors _theme = ThemeColors.Dark;
+    private TrayIndicator? _tray;
 
     public MainForm()
     {
         Title = "ChunkDMesh Client";
-        ClientSize = new Size(900, 650);
-        MinimumSize = new Size(700, 500);
+        ClientSize = new Size(1100, 720);
+        MinimumSize = new Size(800, 500);
 
         var serverUrl = "http://127.0.0.1:8000";
         _ctrl = new AppController(serverUrl);
-        _ctrl.LogMessage += OnLogMessage;
-        _ctrl.StateChanged += OnStateChanged;
+        _metrics = new MetricsService();
+        _notifications = new NotificationService();
 
-        _logBox = new TextArea { ReadOnly = true, Height = 200 };
+        _ctrl.LogMessage += msg => _notifications.NotifyInfo("Log", msg);
 
-        _startBtn = new Button { Text = "▶ Start" };
-        _stopBtn = new Button { Text = "■ Stop", Enabled = false };
+        _dashboardView = new DashboardView(_ctrl, _metrics, _notifications);
+        _performanceView = new PerformanceView(_metrics);
+        _leaderboardView = new LeaderboardView(_ctrl.Api);
+        _settingsView = new SettingsView(_ctrl);
 
-        _statusLabel = new Label();
-        _regionLabel = new Label();
-        _batchesLabel = new Label();
-        _pointsLabel = new Label();
-        RefreshState();
-
-        _leaderboardGrid = new GridView<LeaderboardEntry>
+        _settingsView.ThemeChanged += theme =>
         {
-            Height = 250,
-        };
-        _leaderboardGrid.Columns.Add(new GridColumn { HeaderText = "#", Width = 40 });
-        _leaderboardGrid.Columns.Add(new GridColumn { HeaderText = "Player", Width = 150 });
-        _leaderboardGrid.Columns.Add(new GridColumn { HeaderText = "Points", Width = 80 });
-        _leaderboardGrid.Columns.Add(new GridColumn { HeaderText = "Regions", Width = 80 });
-        _leaderboardGrid.Columns.Add(new GridColumn { HeaderText = "Tier", Width = 50 });
-
-        var tabs = new TabControl
-        {
-            Pages =
-            {
-                new TabPage { Text = "Status", Content = BuildStatusTab() },
-                new TabPage { Text = "Leaderboard", Content = BuildLeaderboardTab() },
-                new TabPage { Text = "Settings", Content = BuildSettingsTab() },
-            }
+            _theme = theme;
+            ApplyTheme(theme);
         };
 
-        Content = new StackLayout
+        _sidebar = new ListBox
         {
-            Padding = 10,
-            Spacing = 6,
-            Items = { tabs }
+            Width = 180,
+            Size = new Size(180, -1),
+            BackgroundColor = _theme.BgCard,
+        };
+        _sidebar.Items.Add("Dashboard");
+        _sidebar.Items.Add("Performance");
+        _sidebar.Items.Add("Leaderboard");
+        _sidebar.Items.Add("Settings");
+        _sidebar.SelectedIndex = 0;
+        _sidebar.SelectedIndexChanged += (_, _) => SwitchView(_sidebar.SelectedIndex);
+
+        _statusBadge = new Label
+        {
+            Text = "● Idle",
+            TextColor = _theme.TextMuted,
+            Font = Fonts.Sans(12, FontStyle.Bold),
+            VerticalAlignment = VerticalAlignment.Center,
         };
 
-        _startBtn.Click += async (_, _) => await StartAsync();
-        _stopBtn.Click += async (_, _) => await StopAsync();
-
-        _leaderboardTimer = new UITimer { Interval = 10 };
-        _leaderboardTimer.Elapsed += async (_, _) => await RefreshLeaderboardAsync();
-        _leaderboardTimer.Start();
-
-        _stateTimer = new UITimer { Interval = 1 };
-        _stateTimer.Elapsed += (_, _) => RefreshState();
-        _stateTimer.Start();
-
-        _ = RestoreSessionAsync();
-    }
-
-    private Control BuildStatusTab()
-    {
-        _startBtn.Size = new Size(100, 32);
-        _stopBtn.Size = new Size(100, 32);
-
-        return new StackLayout
+        var themeToggle = new Button
         {
-            Padding = 10,
-            Spacing = 8,
+            Text = "☀",
+            Size = new Size(32, 28),
+            ToolTip = "Toggle dark/light theme",
+        };
+        themeToggle.Click += (_, _) =>
+        {
+            _theme = _theme == ThemeColors.Dark ? ThemeColors.Light : ThemeColors.Dark;
+            ApplyTheme(_theme);
+        };
+
+        var header = new StackLayout
+        {
+            Orientation = Orientation.Horizontal,
+            Padding = new Padding(12, 6),
+            Spacing = 12,
+            BackgroundColor = _theme.BgCard,
             Items =
             {
-                new StackLayout
-                {
-                    Orientation = Orientation.Horizontal,
-                    Spacing = 10,
-                    Items = { _startBtn, _stopBtn }
-                },
-                new StackLayout
-                {
-                    Orientation = Orientation.Horizontal,
-                    Spacing = 20,
-                    Items = { _statusLabel, _regionLabel, _batchesLabel, _pointsLabel }
-                },
-                new Label { Text = "Log:" },
-                _logBox,
+                new Label { Text = "ChunkDMesh", Font = Fonts.Sans(14, FontStyle.Bold), TextColor = _theme.Accent, VerticalAlignment = VerticalAlignment.Center },
+                _statusBadge,
+                null,
+                themeToggle,
             }
         };
-    }
 
-    private Control BuildLeaderboardTab()
-    {
-        return new StackLayout
+        _contentArea = new Panel();
+
+        var splitter = new Splitter
         {
-            Padding = 10,
-            Spacing = 6,
-            Items = { _leaderboardGrid }
+            Orientation = Orientation.Horizontal,
+            Panel1 = _sidebar,
+            Panel2 = _contentArea,
+            FixedPanel = SplitterFixedPanel.Panel1,
+            RelativePosition = 180,
         };
-    }
 
-    private Control BuildSettingsTab()
-    {
-        var serverUrlBox = new TextBox { Text = "http://127.0.0.1:8000", Width = 300 };
-        var inviteBox = new TextBox { Text = "", Width = 300, PlaceholderText = "Invite code (CHUNK-XXXX-XXXX)" };
-
-        var connectBtn = new Button { Text = "Connect" };
-        connectBtn.Click += async (_, _) =>
+        Content = new TableLayout
         {
-            var code = inviteBox.Text.Trim();
-            if (string.IsNullOrEmpty(code))
+            Spacing = Size.Empty,
+            Padding = Padding.Empty,
+            Rows =
             {
-                MessageBox.Show("Enter invite code or re-launch with --server", "Connection");
-                return;
-            }
-            await _ctrl.LoginWithInviteAsync(code);
-        };
-
-        return new StackLayout
-        {
-            Padding = 10,
-            Spacing = 8,
-            Items =
-            {
-                new Label { Text = "Server URL:" },
-                serverUrlBox,
-                new Label { Text = "Invite Code:" },
-                inviteBox,
-                connectBtn,
-                new Label { Text = "Auto-configures everything. Leave blank for direct connection.",
-                           TextColor = Colors.Gray }
+                new TableRow(header),
+                new TableRow(splitter) { ScaleHeight = true },
             }
         };
-    }
-
-    private async Task StartAsync()
-    {
-        _startBtn.Enabled = false;
-        _stopBtn.Enabled = true;
-        _logBox.Text = "";
 
         try
         {
-            await _ctrl.StartAsync();
-        }
-        catch (Exception ex)
-        {
-            OnLogMessage($"Error: {ex.Message}");
-        }
-    }
-
-    private async Task StopAsync()
-    {
-        await _ctrl.StopAsync();
-        _startBtn.Enabled = true;
-        _stopBtn.Enabled = false;
-        OnLogMessage("Stopped");
-    }
-
-    private async Task RestoreSessionAsync()
-    {
-        var ok = await _ctrl.TryRestoreSessionAsync();
-        if (ok)
-        {
-            OnLogMessage("Session restored");
-            RefreshState();
-        }
-    }
-
-    private void OnLogMessage(string msg)
-    {
-        Application.Instance.AsyncInvoke(() =>
-        {
-            _logBox.Text += $"[{DateTime.Now:HH:mm:ss}] {msg}\n";
-            _logBox.CaretIndex = _logBox.Text.Length;
-        });
-    }
-
-    private void OnStateChanged()
-    {
-        Application.Instance.AsyncInvoke(RefreshState);
-    }
-
-    private async Task RefreshLeaderboardAsync()
-    {
-        try
-        {
-            var lb = await _ctrl.Api.GetLeaderboardAsync();
-            if (lb != null)
+            _tray = new TrayIndicator
             {
-                Application.Instance.AsyncInvoke(() =>
+                Title = "ChunkDMesh",
+                Menu = new ContextMenu
                 {
-                    _leaderboardGrid.DataStore = lb.Leaderboard;
-                    _pointsLabel.Text = $"Contributors: {lb.TotalContributors}";
-                });
-            }
+                    Items =
+                    {
+                        new ButtonMenuItem { Text = "Show" },
+                        new ButtonMenuItem { Text = "Hide" },
+                        new SeparatorMenuItem(),
+                        new ButtonMenuItem { Text = "Quit" },
+                    }
+                },
+            };
+            _tray.Menu.Items[0].Click += (_, _) => Show();
+            _tray.Menu.Items[1].Click += (_, _) => Visible = false;
+            _tray.Menu.Items[3].Click += (_, _) => Application.Instance.Quit();
+            _notifications.AttachTray(_tray);
         }
         catch { }
+
+        _metricsTimer = new UITimer { Interval = 1 };
+        _metricsTimer.Elapsed += (_, _) =>
+        {
+            var tl = _ctrl.TaskLoop;
+            var elapsed = Math.Max((DateTime.UtcNow - _metrics.StartTime).TotalSeconds, 1);
+            _metrics.RecordSample(
+                tl.TotalChunks / elapsed,
+                0, tl.TotalChunks, tl.BatchesCompleted, 0, 0,
+                tl.CurrentRegion, tl.Status);
+            RefreshHeader();
+        };
+        _metricsTimer.Start();
+
+        SwitchView(0);
+        _ = _ctrl.TryRestoreSessionAsync();
     }
 
-    private void RefreshState()
+    private void SwitchView(int index)
     {
-        _statusLabel.Text = $"Status: {_ctrl.TaskLoop.Status}";
-        _regionLabel.Text = $"Region: {_ctrl.TaskLoop.CurrentRegion}";
-        _batchesLabel.Text = $"Batches: {_ctrl.TaskLoop.BatchesCompleted}";
-        _pointsLabel.Text = $"Chunks: {_ctrl.TaskLoop.TotalChunks}";
+        Control view = index switch
+        {
+            0 => _dashboardView,
+            1 => _performanceView,
+            2 => _leaderboardView,
+            3 => _settingsView,
+            _ => _dashboardView,
+        };
+        _contentArea.Content = view;
+    }
+
+    private void RefreshHeader()
+    {
+        var tl = _ctrl.TaskLoop;
+        _statusBadge.Text = $"● {tl.Status}";
+        _statusBadge.TextColor = tl.Status switch
+        {
+            "generating" => _theme.Warning,
+            "uploading" => _theme.Accent,
+            "done" => _theme.Success,
+            _ => _theme.TextMuted,
+        };
+    }
+
+    private void ApplyTheme(ThemeColors theme)
+    {
+        _theme = theme;
+        BackgroundColor = theme.BgDark;
+        _statusBadge.TextColor = theme.TextMuted;
+        _sidebar.BackgroundColor = theme.BgCard;
+        _dashboardView.ApplyTheme(theme);
+        _performanceView.ApplyTheme(theme);
+        _leaderboardView.ApplyTheme(theme);
+        _settingsView.ApplyTheme(theme);
     }
 
     protected override void OnClosed(EventArgs e)
     {
-        _leaderboardTimer.Stop();
-        _stateTimer.Stop();
+        _metricsTimer.Stop();
+        _tray?.Dispose();
         _ctrl.Dispose();
         base.OnClosed(e);
     }
