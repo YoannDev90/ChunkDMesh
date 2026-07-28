@@ -310,10 +310,11 @@ public sealed class SidebarNavItem : Drawable
             g.DrawImage(_icon, iconX, iconY, 24, 24);
         }
 
-        // Label text
+        // Label text vertically aligned with icon
         var labelFont = Fonts.Sans(11);
         var labelColor = _isActive ? Color.FromArgb(255, 255, 255) : _theme.TextSecondary;
-        g.DrawText(labelFont, labelColor, _icon != null ? 36 : 8, (rect.Height - 12) / 2f, Label);
+        var textBaseline = (rect.Height / 2f) + (labelFont.MeasureString("Ag").Height / 3f);
+        g.DrawText(labelFont, labelColor, _icon != null ? 36 : 8, textBaseline, Label);
     }
 
     public void ApplyTheme(ThemeColors theme)
