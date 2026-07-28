@@ -72,8 +72,15 @@ public sealed class MainForm : Form
         for (int i = 0; i < sidebarItems.Length; i++)
         {
             var item = sidebarItems[i];
-            var iconPath = Path.Combine(appDir, item.Image);
-            var image = File.Exists(iconPath) ? new Bitmap(iconPath) : null;
+            var iconPath = Path.Combine(appDir, "Resources", "Icons", item.Image);
+            Bitmap? image = null;
+            if (File.Exists(iconPath))
+            {
+                try
+                {
+                    image = new Bitmap(iconPath);
+                }
+                catch { }
 
             var nav = new SidebarNavItem(image, item.Label)
             {
