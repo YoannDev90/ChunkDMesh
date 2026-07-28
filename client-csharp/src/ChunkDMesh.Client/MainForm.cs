@@ -1,5 +1,3 @@
-using System.IO;
-using System.Reflection;
 using ChunkDMesh.Client.Models;
 using ChunkDMesh.Client.Services;
 using ChunkDMesh.Client.Views;
@@ -10,7 +8,6 @@ namespace ChunkDMesh.Client;
 
 public sealed class MainForm : Form
 {
-    private static readonly string MdiFontFamily = "Material Design Icons";
     private readonly AppController _ctrl;
     private readonly MetricsService _metrics;
     private readonly NotificationService _notifications;
@@ -22,7 +19,7 @@ public sealed class MainForm : Form
     private readonly Label _statusBadge;
     private readonly Label _pageTitle;
     private readonly StackLayout _sidebarLayout;
-    private readonly List<Button> _sidebarButtons;
+    private readonly List<SidebarNavItem> _sidebarItems;
     private readonly StackLayout _headerBar;
     private readonly UITimer _metricsTimer;
     private readonly Panel _toastOverlay;
@@ -30,6 +27,7 @@ public sealed class MainForm : Form
     private ThemeColors _theme = ThemeColors.Dark;
     private TrayIndicator? _tray;
     private Button _themeToggle = default!;
+    private int _selectedIndex = 0;
 
     public MainForm()
     {
@@ -57,41 +55,31 @@ public sealed class MainForm : Form
         {
             Orientation = Orientation.Vertical,
             Padding = new Padding(0),
-            Spacing = 2,
+            Spacing = 0,
             BackgroundColor = _theme.BgCard,
         };
 
-        _sidebarButtons = new List<Button>();
-        var sidebarItems = new[]
+        _sidebarItems = new List<SidebarNavItem>
         {
-            (Codepoint: "\uf056e", Label: " Dashboard"),
-            (Codepoint: "\uf04c5", Label: " Performance"),
-            (Codepoint: "\uf0538", Label: " Leaderboard"),
-            (Codepoint: "\uf0493", Label: " Settings"),
+            new SidebarNavItem(DrawDashboardIcon) { Label = "Dashboard" },
+            new SidebarNavItem(DrawPerformanceIcon) { Label = "Performance" },
+            new SidebarNavItem(DrawLeaderboardIcon) { Label = "Leaderboard" },
+            new SidebarNavItem(DrawSettingsIcon) { Label = "Settings" },
         };
 
-        var mdiFont = LoadMdiFont();
-
-        for (int i = 0; i < sidebarItems.Length; i++)
+        for (int i = 0; i < _sidebarItems.Count; i++)
         {
-            var item = sidebarItems[i];
-            var btn = new Button
-            {
-                Text = $"{item.Codepoint}{item.Label}",
-                Font = mdiFont != null ? new Font(new FontFamily(mdiFont), 14) : Fonts.Sans(12),
-                BackgroundColor = i == 0 ? _theme.Accent : _theme.BgCard,
-                TextColor = i == 0 ? Color.FromArgb(255, 255, 255) : _theme.TextSecondary,
-                Size = new Size(185, 40),
-                MinimumSize = new Size(185, 40),
-            };
-            btn.Click += (_, _) => SelectSidebar(i);
-            _sidebarButtons.Add(btn);
-            _sidebarLayout.Items.Add(new StackLayoutItem(btn, false));
+            var idx = i;
+            var item = _sidebarItems[i];
+            item.IsActive = i == 0;
+            item.Click += (_, _) => SelectSidebar(idx);
+            item.ApplyTheme(_theme);
+            _sidebarLayout.Items.Add(new StackLayoutItem(item, false));
         }
 
         _pageTitle = new Label
         {
-            Text = "📊 Dashboard",
+            Text = "Dashboard",
             Font = Fonts.Sans(16, FontStyle.Bold),
             TextColor = _theme.TextPrimary,
         };
@@ -139,7 +127,7 @@ public sealed class MainForm : Form
             Panel1 = _sidebarLayout,
             Panel2 = _contentArea,
             FixedPanel = SplitterFixedPanel.Panel1,
-            RelativePosition = 180,
+            RelativePosition = 185,
         };
 
         _toastOverlay = new Panel
@@ -152,8 +140,9 @@ public sealed class MainForm : Form
         _toastLabel = new Label
         {
             Text = "",
-            TextColor = Colors.White,
+            TextColor = Color.FromArgb(255, 255, 255),
             Font = Fonts.Sans(10),
+            Size = new Size(400, 32),
         };
         _toastOverlay.Content = _toastLabel;
 
@@ -188,9 +177,19 @@ public sealed class MainForm : Form
         _ = _ctrl.TryRestoreSessionAsync();
     }
 
+    private void SelectSidebar(int index)
+    {
+        _selectedIndex = index;
+        for (int i = 0; i < _sidebarItems.Count; i++)
+        {
+            _sidebarItems[i].IsActive = i == index;
+            _sidebarItems[i].ApplyTheme(_theme);
+        }
+        SwitchView(index);
+    }
+
     private void SwitchView(int index)
     {
-        SelectedSidebarIndex = index;
         Control view = index switch
         {
             0 => _dashboardView,
@@ -203,10 +202,10 @@ public sealed class MainForm : Form
 
         _pageTitle.Text = index switch
         {
-            0 => "📊 Dashboard",
-            1 => "⚡ Performance",
-            2 => "🏆 Leaderboard",
-            3 => "⚙️ Settings",
+            0 => "Dashboard",
+            1 => "Performance",
+            2 => "Leaderboard",
+            3 => "Settings",
             _ => "ChunkDMesh",
         };
     }
@@ -224,47 +223,6 @@ public sealed class MainForm : Form
         };
     }
 
-    private void SelectSidebar(int index)
-    {
-        for (int i = 0; i < _sidebarButtons.Count; i++)
-        {
-            var btn = _sidebarButtons[i];
-            var isActive = i == index;
-            btn.BackgroundColor = isActive ? _theme.Accent : _theme.BgCard;
-            btn.TextColor = isActive ? Color.FromArgb(255, 255, 255) : _theme.TextSecondary;
-            btn.Font = Fonts.Sans(12, isActive ? FontStyle.Bold : FontStyle.None);
-        }
-        SwitchView(index);
-    }
-
-    private static string? LoadMdiFont()
-    {
-        try
-        {
-            var appDir = Path.GetDirectoryName(Assembly.GetEntryAssembly()?.Location);
-            if (string.IsNullOrEmpty(appDir)) return null;
-            var fontFile = Path.Combine(appDir, "MaterialDesignIcons-Regular.ttf");
-            if (!File.Exists(fontFile)) return null;
-
-            var localFontDir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-                ".local", "share", "fonts");
-            Directory.CreateDirectory(localFontDir);
-            var targetPath = Path.Combine(localFontDir, "MaterialDesignIcons-Regular.ttf");
-            if (!File.Exists(targetPath))
-            {
-                File.Copy(fontFile, targetPath, overwrite: true);
-            }
-
-            var fcCache = Path.Combine(localFontDir, "..", ".");
-            return MdiFontFamily;
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
     private void ApplyTheme(ThemeColors theme)
     {
         _theme = theme;
@@ -275,14 +233,16 @@ public sealed class MainForm : Form
         _themeToggle.BackgroundColor = theme.BgCard;
         _toastOverlay.BackgroundColor = Color.FromArgb(200, 0, 0, 0);
         _sidebarLayout.BackgroundColor = theme.BgCard;
-        SelectSidebar(SelectedSidebarIndex);
+        for (int i = 0; i < _sidebarItems.Count; i++)
+        {
+            _sidebarItems[i].IsActive = i == _selectedIndex;
+            _sidebarItems[i].ApplyTheme(theme);
+        }
         _dashboardView.ApplyTheme(theme);
         _performanceView.ApplyTheme(theme);
         _leaderboardView.ApplyTheme(theme);
         _settingsView.ApplyTheme(theme);
     }
-
-    private int SelectedSidebarIndex = 0;
 
     protected override void OnClosed(EventArgs e)
     {
@@ -290,5 +250,112 @@ public sealed class MainForm : Form
         _tray?.Dispose();
         _ctrl.Dispose();
         base.OnClosed(e);
+    }
+
+    #region Sidebar Icons (drawn with Eto.Drawing primitives)
+
+    private static void DrawDashboardIcon(Graphics g, float x, float cy, ThemeColors theme)
+    {
+        var s = 7f;
+        var gap = 1f;
+        var x0 = x;
+        var x1 = x0 + s + gap;
+        var x2 = x1 + s + gap;
+        var x3 = x2 + s + gap;
+        var yt = cy - s;
+        var yc = cy;
+        var yb = cy + s;
+        g.FillRectangle(new SolidBrush(theme.TextSecondary), x0, yt, s, s);
+        g.FillRectangle(new SolidBrush(theme.TextSecondary), x1, yt, s, s);
+        g.FillRectangle(new SolidBrush(theme.TextMuted), x2, yt, s, s);
+        g.FillRectangle(new SolidBrush(theme.TextMuted), x3, yt, s, s);
+        g.FillRectangle(new SolidBrush(theme.Accent), x0, yc, s, s);
+        g.FillRectangle(new SolidBrush(theme.Accent), x1, yc, s, s);
+        g.FillRectangle(new SolidBrush(theme.TextSecondary), x2, yc, s, s);
+        g.FillRectangle(new SolidBrush(theme.TextSecondary), x3, yc, s, s);
+    }
+
+    private static void DrawPerformanceIcon(Graphics g, float x, float cy, ThemeColors theme)
+    {
+        var pts = new[]
+        {
+            new PointF(x + 1, cy + 7),
+            new PointF(x + 4, cy - 3),
+            new PointF(x + 7, cy + 1),
+            new PointF(x + 10, cy - 7),
+            new PointF(x + 13, cy - 1),
+            new PointF(x + 16, cy + 7),
+        };
+        using var pen = new Pen(theme.Accent, 2f);
+        g.DrawLines(pen, pts);
+    }
+
+    private static void DrawLeaderboardIcon(Graphics g, float x, float cy, ThemeColors theme)
+    {
+        var cx = x + 10;
+        g.DrawLine(new Pen(theme.Warning, 1.5f), cx, cy - 8, cx - 5, cy);
+        g.DrawLine(new Pen(theme.Warning, 1.5f), cx, cy - 8, cx + 5, cy);
+        g.DrawLine(new Pen(theme.Warning, 1.5f), cx - 5, cy, cx + 5, cy);
+        g.DrawLine(new Pen(theme.Warning, 1.5f), cx - 5, cy, cx, cy + 7);
+        g.DrawLine(new Pen(theme.Warning, 1.5f), cx + 5, cy, cx, cy + 7);
+    }
+
+    private static void DrawSettingsIcon(Graphics g, float x, float cy, ThemeColors theme)
+    {
+        var cx = x + 10;
+        var r = 7f;
+        g.DrawEllipse(new Pen(theme.TextSecondary, 2f), cx - r, cy - r, r * 2, r * 2);
+        g.DrawEllipse(new Pen(theme.Accent, 1.5f), cx - r / 2f, cy - r / 2f, r, r);
+        g.FillEllipse(new SolidBrush(theme.Accent), cx - 2, cy - 2, 4, 4);
+    }
+
+    #endregion
+}
+
+public sealed class SidebarNavItem : Drawable
+{
+    private readonly Action<Graphics, float, float, ThemeColors> _drawIcon;
+    private ThemeColors _theme = ThemeColors.Dark;
+    private bool _isActive;
+
+    public SidebarNavItem(Action<Graphics, float, float, ThemeColors> drawIcon)
+    {
+        _drawIcon = drawIcon;
+        Size = new Size(185, 40);
+        MinimumSize = new Size(185, 40);
+        BackgroundColor = ThemeColors.Dark.BgCard;
+        MouseEnter += (_, _) => { if (!_isActive) { BackgroundColor = _theme.BgInput; Invalidate(); } };
+        MouseLeave += (_, _) => { if (!_isActive) { BackgroundColor = _theme.BgCard; Invalidate(); } };
+        MouseDown += (_, _) => Click?.Invoke(this, EventArgs.Empty);
+    }
+
+    public string Label { get; init; } = "";
+
+    public bool IsActive
+    {
+        get => _isActive;
+        set { _isActive = value; Invalidate(); }
+    }
+
+    public event EventHandler? Click;
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        base.OnPaint(e);
+        var g = e.Graphics;
+        var rect = new RectangleF(PointF.Empty, Size);
+        g.FillRectangle(new SolidBrush(_isActive ? _theme.Accent : _theme.BgCard), rect);
+
+        _drawIcon(g, 8, rect.Height / 2f, _theme);
+
+        var labelFont = Fonts.Sans(11);
+        var labelColor = _isActive ? Color.FromArgb(255, 255, 255) : _theme.TextSecondary;
+        g.DrawText(labelFont, labelColor, 36, (rect.Height - 12) / 2f, Label);
+    }
+
+    public void ApplyTheme(ThemeColors theme)
+    {
+        _theme = theme;
+        Invalidate();
     }
 }
