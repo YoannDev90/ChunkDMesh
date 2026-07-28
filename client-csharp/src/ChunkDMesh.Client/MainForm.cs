@@ -19,7 +19,7 @@ public sealed class MainForm : Form
     private readonly Label _statusBadge;
     private readonly Label _pageTitle;
     private readonly StackLayout _sidebarLayout;
-    private readonly List<Button> _sidebarButtons;
+    private readonly List<SidebarNavItem> _sidebarButtons;
     private readonly StackLayout _headerBar;
     private readonly UITimer _metricsTimer;
     private readonly Panel _toastOverlay;
@@ -59,7 +59,7 @@ public sealed class MainForm : Form
             BackgroundColor = _theme.BgCard,
         };
 
-        _sidebarButtons = new List<Button>();
+        _sidebarButtons = new List<SidebarNavItem>();
         var sidebarItems = new[]
         {
             (Image: "view-dashboard.png", Label: "Dashboard"),
@@ -75,21 +75,14 @@ public sealed class MainForm : Form
             var iconPath = Path.Combine(appDir, item.Image);
             var image = File.Exists(iconPath) ? new Bitmap(iconPath) : null;
 
-            var btn = new Button
+            var nav = new SidebarNavItem(image, item.Label)
             {
-                Text = item.Label,
-                Image = image,
-                ImagePosition = ButtonImagePosition.Left,
-                Font = Fonts.Sans(11, i == 0 ? FontStyle.Bold : FontStyle.None),
-                Size = new Size(185, 40),
-                MinimumSize = new Size(185, 40),
-                BackgroundColor = i == 0 ? _theme.Accent : _theme.BgCard,
-                TextColor = i == 0 ? Color.FromArgb(255, 255, 255) : _theme.TextSecondary,
+                IsActive = i == 0,
             };
             var idx = i;
-            btn.Click += (_, _) => SelectSidebar(idx);
-            _sidebarButtons.Add(btn);
-            _sidebarLayout.Items.Add(new StackLayoutItem(btn, false));
+            nav.Click += (_, _) => SelectSidebar(idx);
+            _sidebarButtons.Add(nav);
+            _sidebarLayout.Items.Add(new StackLayoutItem(nav, false));
         }
 
         _pageTitle = new Label
@@ -197,11 +190,9 @@ public sealed class MainForm : Form
         _selectedIndex = index;
         for (int i = 0; i < _sidebarButtons.Count; i++)
         {
-            var btn = _sidebarButtons[i];
-            var isActive = i == index;
-            btn.BackgroundColor = isActive ? _theme.Accent : _theme.BgCard;
-            btn.TextColor = isActive ? Color.FromArgb(255, 255, 255) : _theme.TextSecondary;
-            btn.Font = Fonts.Sans(11, isActive ? FontStyle.Bold : FontStyle.None);
+            _sidebarButtons[i].IsActive = i == index;
+            _sidebarButtons[i].ApplyTheme(_theme);
+            _sidebarButtons[i].Invalidate();
         }
         SwitchView(index);
     }
@@ -264,5 +255,63 @@ public sealed class MainForm : Form
         _tray?.Dispose();
         _ctrl.Dispose();
         base.OnClosed(e);
+    }
+}
+
+public sealed class SidebarNavItem : Drawable
+{
+    private readonly Bitmap? _icon;
+    private ThemeColors _theme = ThemeColors.Dark;
+    private bool _isActive;
+
+    public SidebarNavItem(Bitmap? icon, string label)
+    {
+        _icon = icon;
+        Label = label;
+        Size = new Size(185, 40);
+        MinimumSize = new Size(185, 40);
+        BackgroundColor = ThemeColors.Dark.BgCard;
+        MouseEnter += (_, _) => { if (!_isActive) { BackgroundColor = _theme.BgInput; Invalidate(); } };
+        MouseLeave += (_, _) => { if (!_isActive) { BackgroundColor = _theme.BgCard; Invalidate(); } };
+        MouseDown += (_, _) => Click?.Invoke(this, EventArgs.Empty);
+    }
+
+    public string Label { get; init; } = "";
+
+    public bool IsActive
+    {
+        get => _isActive;
+        set { _isActive = value; Invalidate(); }
+    }
+
+    public event EventHandler? Click;
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        base.OnPaint(e);
+        var g = e.Graphics;
+        var rect = new RectangleF(PointF.Empty, Size);
+
+        // Background
+        g.FillRectangle(new SolidBrush(_isActive ? _theme.Accent : _theme.BgCard), rect);
+
+        // Draw icon (centered vertically, left-aligned)
+        if (_icon != null)
+        {
+            var iconX = 6f;
+            var iconY = (rect.Height - 24) / 2f;
+            g.DrawImage(_icon, iconX, iconY, 24, 24);
+        }
+
+        // Label text
+        var labelFont = Fonts.Sans(11);
+        var labelColor = _isActive ? Color.FromArgb(255, 255, 255) : _theme.TextSecondary;
+        g.DrawText(labelFont, labelColor, _icon != null ? 36 : 8, (rect.Height - 12) / 2f, Label);
+    }
+
+    public void ApplyTheme(ThemeColors theme)
+    {
+        _theme = theme;
+        Invalidate();
     }
 }
