@@ -18,6 +18,7 @@ public sealed class DashboardView : Panel
     private readonly StatCard _cardRate;
     private readonly StatCard _cardUptime;
     private readonly Label _statusBadge;
+    private readonly Label _pageTitle;
     private ThemeColors _theme = ThemeColors.Dark;
     private Button _startBtn = default!;
     private Button _stopBtn = default!;
@@ -43,9 +44,16 @@ public sealed class DashboardView : Panel
             Font = Fonts.Sans(12, FontStyle.Bold),
         };
 
+        _pageTitle = new Label
+        {
+            Text = "Dashboard",
+            Font = Fonts.Sans(18, FontStyle.Bold),
+            TextColor = _theme.TextPrimary,
+        };
+
         BuildLayout();
 
-        _ctrl.LogMessage += msg => _feed.AddEntry("ℹ", msg, _theme.Accent);
+        _ctrl.LogMessage += msg => _feed.AddEntry("▸", msg, _theme.Accent);
         _ctrl.StateChanged += () => Application.Instance.AsyncInvoke(RefreshStats);
 
         _metrics.SampleAdded += sample =>
@@ -71,8 +79,11 @@ public sealed class DashboardView : Panel
 
     private void BuildLayout()
     {
-        _startBtn = new Button { Text = "▶ Start Generation", Size = new Size(140, 34) };
-        _stopBtn = new Button { Text = "■ Stop", Size = new Size(90, 34), Enabled = false };
+        _startBtn = new Button { Text = "▶  Start Generation", Size = new Size(160, 36) };
+        _stopBtn = new Button { Text = "■  Stop", Size = new Size(90, 36), Enabled = false };
+
+        StyleButton(_startBtn, _theme.Accent);
+        StyleButton(_stopBtn, _theme.Danger);
 
         _startBtn.Click += async (_, _) =>
         {
@@ -90,53 +101,87 @@ public sealed class DashboardView : Panel
 
         _stopBtn.Click += async (_, _) =>
         {
+            var result = MessageBox.Show(this, "Stop generation?", "Confirm Stop",
+                MessageBoxButtons.YesNo, MessageBoxType.Warning);
+            if (result != DialogResult.Yes) return;
+
             await _ctrl.StopAsync();
             _startBtn.Enabled = true;
             _stopBtn.Enabled = false;
             _notifications.NotifyWarning("Stopped", "Generation loop halted");
         };
 
-        var controls = new TableLayout
+        var headerRow = new StackLayout
         {
-            Spacing = new Size(0, 16),
-            Padding = new Padding(20),
-            Rows =
+            Orientation = Orientation.Horizontal,
+            Spacing = 12,
+            Items =
             {
-                new TableRow(_statusBadge, _startBtn, _stopBtn, null),
-                new TableRow(_cardChunks, _cardBatches, _cardRate, _cardUptime),
-                new TableRow
-                {
-                    ScaleHeight = true,
-                    Cells =
-                    {
-                        new TableCell(_ring, false),
-                        new TableCell(new StackLayout
-                        {
-                            Spacing = 8,
-                            Items =
-                            {
-                                new Label { Text = "Activity", Font = Fonts.Sans(11, FontStyle.Bold), TextColor = _theme.TextSecondary },
-                                new StackLayoutItem(_feed, true),
-                            }
-                        }, true),
-                    }
-                },
+                _pageTitle,
+                null,
+                _statusBadge,
+                _startBtn,
+                _stopBtn,
             }
         };
 
-        Content = new Scrollable { Content = controls };
+        var cardsRow = new TableRow(_cardChunks, _cardBatches, _cardRate, _cardUptime);
+
+        var bottomRow = new TableRow
+        {
+            ScaleHeight = true,
+            Cells =
+            {
+                new TableCell(_ring, false),
+                new TableCell(new StackLayout
+                {
+                    Spacing = 6,
+                    Items =
+                    {
+                        new Label { Text = "Activity Log", Font = Fonts.Sans(11, FontStyle.Bold), TextColor = _theme.TextPrimary },
+                        new StackLayoutItem(_feed, true),
+                    }
+                }, true),
+            }
+        };
+
+        var content = new TableLayout
+        {
+            Padding = new Padding(20, 12),
+            Spacing = new Size(0, 16),
+            Rows =
+            {
+                new TableRow(headerRow),
+                new TableRow(cardsRow),
+                new TableRow(bottomRow) { ScaleHeight = true },
+            }
+        };
+
+        Content = new Scrollable { Content = content };
+    }
+
+    private static void StyleButton(Button btn, Color bgColor)
+    {
+        btn.BackgroundColor = bgColor;
+        btn.TextColor = Color.FromArgb(255, 255, 255);
+        btn.Font = Fonts.Sans(11);
+        btn.Size = new Size(140, 32);
     }
 
     public void ApplyTheme(ThemeColors theme)
     {
         _theme = theme;
         BackgroundColor = theme.BgDark;
-        _ring.ApplyTheme(theme);
+        _pageTitle.TextColor = theme.TextPrimary;
+        _statusBadge.TextColor = theme.TextMuted;
         _feed.ApplyTheme(theme);
+        _ring.ApplyTheme(theme);
         _cardChunks.ApplyTheme(theme);
         _cardBatches.ApplyTheme(theme);
         _cardRate.ApplyTheme(theme);
         _cardUptime.ApplyTheme(theme);
+        StyleButton(_startBtn, theme.Accent);
+        StyleButton(_stopBtn, theme.Danger);
         _statusBadge.TextColor = theme.TextMuted;
     }
 

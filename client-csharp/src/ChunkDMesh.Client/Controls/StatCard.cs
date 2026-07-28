@@ -14,12 +14,14 @@ public sealed class StatCard : Drawable
     private Color _textPrimary;
     private Color _textSecondary;
     private Color _textMuted;
+    private Color _chartFill;
     private bool _showSparkline;
     private float[]? _sparklineData;
 
     public StatCard()
     {
         Size = new Size(220, 120);
+        MinimumSize = new Size(160, 80);
         _accent = Colors.DodgerBlue;
         ApplyTheme(ThemeColors.Dark);
     }
@@ -31,6 +33,7 @@ public sealed class StatCard : Drawable
         _textSecondary = theme.TextSecondary;
         _textMuted = theme.TextMuted;
         _accent = theme.Accent;
+        _chartFill = theme.ChartFill;
         Invalidate();
     }
 
@@ -78,35 +81,38 @@ public sealed class StatCard : Drawable
         var rect = new RectangleF(PointF.Empty, Size);
 
         // Card background with rounded corners
-        DrawRoundedRect(g, new RectangleF(rect.X + 1, rect.Y + 1, rect.Width - 2, rect.Height - 2), _bgCard, 8);
+        DrawRoundedRect(g, new RectangleF(1, 1, rect.Width - 2, rect.Height - 2), _bgCard, 6);
+
+        // Subtle border
+        g.DrawRectangle(new Pen(_bgCard), new RectangleF(0.5f, 0.5f, rect.Width - 1, rect.Height - 1));
 
         // Accent bar at top
-        g.FillRectangle(new SolidBrush(_accent), new RectangleF(2, 2, rect.Width - 4, 3));
+        g.FillRectangle(new SolidBrush(_accent), new RectangleF(6, 2, rect.Width - 12, 3));
 
         // Label
         var labelFont = Fonts.Sans(10);
-        g.DrawText(labelFont, _textMuted, 14, 14, _label);
+        g.DrawText(labelFont, _textMuted, 14, 12, _label);
 
         // Value
-        var valueFont = Fonts.Sans(28, FontStyle.Bold);
+        var valueFont = Fonts.Sans(26, FontStyle.Bold);
         if (_showSparkline && _sparklineData is { Length: > 1 })
         {
-            var valueRight = rect.Width - 80;
-            g.DrawText(valueFont, _textPrimary, 14, 32, _value);
+            var valueRight = rect.Width - 90;
+            g.DrawText(valueFont, _textPrimary, 14, 30, _value);
 
             // Mini sparkline
             DrawSparkline(g, _sparklineData,
-                new RectangleF(valueRight, 36, rect.Width - valueRight - 12, 36));
+                new RectangleF(valueRight, 34, rect.Width - valueRight - 12, 34));
         }
         else
         {
-            g.DrawText(valueFont, _textPrimary, 14, 32, _value);
+            g.DrawText(valueFont, _textPrimary, 14, 30, _value);
         }
 
         // Subtext
         if (!string.IsNullOrEmpty(_subtext))
         {
-            g.DrawText(labelFont, _textSecondary, 14, 72, _subtext);
+            g.DrawText(labelFont, _textSecondary, 14, 66, _subtext);
         }
     }
 
@@ -147,6 +153,4 @@ public sealed class StatCard : Drawable
         using var pen = new Pen(_accent, 1.5f);
         g.DrawLines(pen, pts);
     }
-
-    private Color _chartFill = Color.FromArgb(99, 102, 241, 40);
 }

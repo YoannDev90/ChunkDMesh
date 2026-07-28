@@ -11,7 +11,8 @@ public sealed class SettingsView : Panel
     private readonly TextBox _serverBox;
     private readonly TextBox _inviteBox;
     private readonly DropDown _themeSelect;
-    private readonly Label _versionLabel;
+    private Label _pageTitle;
+    private Label _versionLabel;
     private ThemeColors _theme = ThemeColors.Dark;
 
     public event Action<ThemeColors>? ThemeChanged;
@@ -26,7 +27,7 @@ public sealed class SettingsView : Panel
         _themeSelect = new DropDown
         {
             Width = 200,
-            Items = { "Dark", "Light" },
+            Items = { "🌙 Dark", "☀️ Light" },
             SelectedIndex = 0,
         };
 
@@ -48,63 +49,79 @@ public sealed class SettingsView : Panel
 
     private void BuildLayout()
     {
-        var headerFont = Fonts.Sans(14, FontStyle.Bold);
+        var headerFont = Fonts.Sans(18, FontStyle.Bold);
         var sectionFont = Fonts.Sans(11, FontStyle.Bold);
 
-        Content = new Scrollable
+        _pageTitle = new Label
         {
-            Content = new TableLayout
-            {
-                Padding = new Padding(20),
-                Spacing = new Size(0, 16),
-                Rows =
-                {
-                    new TableRow(new Label { Text = "Settings", Font = headerFont, TextColor = _theme.TextPrimary }),
+            Text = "Settings",
+            Font = headerFont,
+            TextColor = _theme.TextPrimary,
+        };
 
-                    new TableRow(new Label { Text = "SERVER CONNECTION", Font = sectionFont, TextColor = _theme.Accent }),
-                    new TableRow(CreateField("Server URL", _serverBox)),
-                    new TableRow(CreateField("Invite Code", _inviteBox)),
-                    new TableRow(
-                        new Button { Text = "Connect" }.WithClick(async (_, _) =>
+        var content = new StackLayout
+        {
+            Padding = new Padding(20, 12),
+            Spacing = 16,
+            Items =
+            {
+                _pageTitle,
+
+                new StackLayoutItem(new Label { Text = "SERVER CONNECTION", Font = sectionFont, TextColor = _theme.Accent }, false),
+                CreateField("Server URL", _serverBox),
+                CreateField("Invite Code", _inviteBox),
+                new StackLayout
+                {
+                    Orientation = Orientation.Horizontal,
+                    Spacing = 8,
+                    Items =
+                    {
+                        CreateStyledButton("Connect", _theme.Accent, async (_, _) =>
                         {
                             var code = _inviteBox.Text.Trim();
-                            if (!string.IsNullOrEmpty(code))
-                                await _ctrl.LoginWithInviteAsync(code);
-                            else
-                                MessageBox.Show("Enter invite code first", "Connection");
+                            if (string.IsNullOrEmpty(code))
+                            {
+                                MessageBox.Show("Enter an invite code or leave blank for direct connect", "Connection");
+                                return;
+                            }
+                            if (!IsValidInviteCode(code))
+                            {
+                                MessageBox.Show("Invite code format: CHUNK-XXXX-XXXX", "Invalid Format");
+                                return;
+                            }
+                            await _ctrl.LoginWithInviteAsync(code);
                         }),
-                        new Button { Text = "Restore Session" }.WithClick(async (_, _) =>
+                        CreateStyledButton("Restore Session", _theme.Border, async (_, _) =>
                         {
                             var ok = await _ctrl.TryRestoreSessionAsync();
-                            MessageBox.Show(ok ? "Session restored" : "No saved session", "Auth");
+                            MessageBox.Show(ok ? "Session restored" : "No saved session found", "Auth");
                         }),
-                        new Button { Text = "Logout" }.WithClick((_, _) =>
+                        CreateStyledButton("Logout", _theme.Danger, (_, _) =>
                         {
-                            _ctrl.Auth.Logout();
-                            MessageBox.Show("Logged out", "Auth");
-                        })
-                    ),
+                            var result = MessageBox.Show(this, "Log out of current session?", "Confirm Logout",
+                                MessageBoxButtons.YesNo, MessageBoxType.Warning);
+                            if (result == DialogResult.Yes)
+                            {
+                                _ctrl.Auth.Logout();
+                                MessageBox.Show("Logged out", "Auth");
+                            }
+                        }),
+                    }
+                },
 
-                    new TableRow(new Label { Text = "APPEARANCE", Font = sectionFont, TextColor = _theme.Accent }),
-                    new TableRow(CreateField("Theme", _themeSelect)),
+                new StackLayoutItem(new Label { Text = "APPEARANCE", Font = sectionFont, TextColor = _theme.Accent }, false),
+                CreateField("Theme", _themeSelect),
 
-                    new TableRow(new Label { Text = "ABOUT", Font = sectionFont, TextColor = _theme.Accent }),
-                    new TableRow(_versionLabel),
-                    new TableRow(new Label { Text = "Distributed Minecraft world pre-generation.",
-                               TextColor = _theme.TextMuted, Font = Fonts.Sans(9) }),
-                }
+                new StackLayoutItem(new Label { Text = "ABOUT", Font = sectionFont, TextColor = _theme.Accent }, false),
+                _versionLabel,
+                new Label { Text = "Distributed Minecraft world pre-generation engine.", TextColor = _theme.TextMuted, Font = Fonts.Sans(9) },
             }
         };
+
+        Content = new Scrollable { Content = content };
     }
 
-    public void ApplyTheme(ThemeColors theme)
-    {
-        _theme = theme;
-        BackgroundColor = theme.BgDark;
-        _versionLabel.TextColor = theme.TextMuted;
-    }
-
-    private static Control CreateField(string label, Control input)
+    private static StackLayout CreateField(string label, Control input)
     {
         return new StackLayout
         {
@@ -113,18 +130,38 @@ public sealed class SettingsView : Panel
             VerticalContentAlignment = VerticalAlignment.Center,
             Items =
             {
-                new Label { Text = label, Width = 110 },
+                new Label { Text = label, Width = 120, Font = Fonts.Sans(11) },
                 input,
             }
         };
     }
-}
 
-internal static class ButtonExtensions
-{
-    public static Button WithClick(this Button btn, EventHandler<EventArgs> handler)
+    private static Button CreateStyledButton(string text, Color bgColor, EventHandler<EventArgs> handler)
     {
+        var btn = new Button { Text = text, Font = Fonts.Sans(11) };
+        btn.BackgroundColor = bgColor;
+        btn.TextColor = Color.FromArgb(255, 255, 255);
+        btn.Size = new Size(120, 32);
         btn.Click += handler;
         return btn;
+    }
+
+    private static bool IsValidInviteCode(string code)
+    {
+        return System.Text.RegularExpressions.Regex.IsMatch(code, @"^CHUNK-[A-Z0-9]{4}-[A-Z0-9]{4}$");
+    }
+
+    public void ApplyTheme(ThemeColors theme)
+    {
+        _theme = theme;
+        BackgroundColor = theme.BgDark;
+        _pageTitle.TextColor = theme.TextPrimary;
+        _versionLabel.TextColor = theme.TextMuted;
+        _themeSelect.BackgroundColor = theme.BgInput;
+        _themeSelect.TextColor = theme.TextPrimary;
+        _serverBox.BackgroundColor = theme.BgInput;
+        _serverBox.TextColor = theme.TextPrimary;
+        _inviteBox.BackgroundColor = theme.BgInput;
+        _inviteBox.TextColor = theme.TextPrimary;
     }
 }

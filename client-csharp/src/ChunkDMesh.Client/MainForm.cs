@@ -17,10 +17,15 @@ public sealed class MainForm : Form
     private readonly SettingsView _settingsView;
     private readonly Panel _contentArea;
     private readonly Label _statusBadge;
+    private readonly Label _pageTitle;
     private readonly ListBox _sidebar;
+    private readonly StackLayout _headerBar;
     private readonly UITimer _metricsTimer;
+    private readonly Panel _toastOverlay;
+    private readonly Label _toastLabel;
     private ThemeColors _theme = ThemeColors.Dark;
     private TrayIndicator? _tray;
+    private Button _themeToggle = default!;
 
     public MainForm()
     {
@@ -32,8 +37,6 @@ public sealed class MainForm : Form
         _ctrl = new AppController(serverUrl);
         _metrics = new MetricsService();
         _notifications = new NotificationService();
-
-        _ctrl.LogMessage += msg => _notifications.NotifyInfo("Log", msg);
 
         _dashboardView = new DashboardView(_ctrl, _metrics, _notifications);
         _performanceView = new PerformanceView(_metrics);
@@ -52,12 +55,19 @@ public sealed class MainForm : Form
             Size = new Size(180, -1),
             BackgroundColor = _theme.BgCard,
         };
-        _sidebar.Items.Add("Dashboard");
-        _sidebar.Items.Add("Performance");
-        _sidebar.Items.Add("Leaderboard");
-        _sidebar.Items.Add("Settings");
+        _sidebar.Items.Add("  📊  Dashboard");
+        _sidebar.Items.Add("  ⚡  Performance");
+        _sidebar.Items.Add("  🏆  Leaderboard");
+        _sidebar.Items.Add("  ⚙️  Settings");
         _sidebar.SelectedIndex = 0;
         _sidebar.SelectedIndexChanged += (_, _) => SwitchView(_sidebar.SelectedIndex);
+
+        _pageTitle = new Label
+        {
+            Text = "📊 Dashboard",
+            Font = Fonts.Sans(16, FontStyle.Bold),
+            TextColor = _theme.TextPrimary,
+        };
 
         _statusBadge = new Label
         {
@@ -67,19 +77,19 @@ public sealed class MainForm : Form
             VerticalAlignment = VerticalAlignment.Center,
         };
 
-        var themeToggle = new Button
+        _themeToggle = new Button
         {
             Text = "☀",
             Size = new Size(32, 28),
             ToolTip = "Toggle dark/light theme",
         };
-        themeToggle.Click += (_, _) =>
+        _themeToggle.Click += (_, _) =>
         {
             _theme = _theme == ThemeColors.Dark ? ThemeColors.Light : ThemeColors.Dark;
             ApplyTheme(_theme);
         };
 
-        var header = new StackLayout
+        _headerBar = new StackLayout
         {
             Orientation = Orientation.Horizontal,
             Padding = new Padding(12, 6),
@@ -87,10 +97,10 @@ public sealed class MainForm : Form
             BackgroundColor = _theme.BgCard,
             Items =
             {
-                new Label { Text = "ChunkDMesh", Font = Fonts.Sans(14, FontStyle.Bold), TextColor = _theme.Accent, VerticalAlignment = VerticalAlignment.Center },
-                _statusBadge,
+                _pageTitle,
                 null,
-                themeToggle,
+                _statusBadge,
+                _themeToggle,
             }
         };
 
@@ -105,39 +115,34 @@ public sealed class MainForm : Form
             RelativePosition = 180,
         };
 
+        _toastOverlay = new Panel
+        {
+            Visible = false,
+            BackgroundColor = Color.FromArgb(200, 0, 0, 0),
+            Size = new Size(400, 32),
+        };
+
+        _toastLabel = new Label
+        {
+            Text = "",
+            TextColor = Colors.White,
+            Font = Fonts.Sans(10),
+        };
+        _toastOverlay.Content = _toastLabel;
+
         Content = new TableLayout
         {
             Spacing = Size.Empty,
             Padding = Padding.Empty,
             Rows =
             {
-                new TableRow(header),
+                new TableRow(_headerBar),
                 new TableRow(splitter) { ScaleHeight = true },
+                new TableRow(_toastOverlay),
             }
         };
 
-        try
-        {
-            _tray = new TrayIndicator
-            {
-                Title = "ChunkDMesh",
-                Menu = new ContextMenu
-                {
-                    Items =
-                    {
-                        new ButtonMenuItem { Text = "Show" },
-                        new ButtonMenuItem { Text = "Hide" },
-                        new SeparatorMenuItem(),
-                        new ButtonMenuItem { Text = "Quit" },
-                    }
-                },
-            };
-            _tray.Menu.Items[0].Click += (_, _) => Show();
-            _tray.Menu.Items[1].Click += (_, _) => Visible = false;
-            _tray.Menu.Items[3].Click += (_, _) => Application.Instance.Quit();
-            _notifications.AttachTray(_tray);
-        }
-        catch { }
+        _notifications.AttachToastOverlay(_toastOverlay, _toastLabel, this);
 
         _metricsTimer = new UITimer { Interval = 1 };
         _metricsTimer.Elapsed += (_, _) =>
@@ -167,6 +172,15 @@ public sealed class MainForm : Form
             _ => _dashboardView,
         };
         _contentArea.Content = view;
+
+        _pageTitle.Text = index switch
+        {
+            0 => "📊 Dashboard",
+            1 => "⚡ Performance",
+            2 => "🏆 Leaderboard",
+            3 => "⚙️ Settings",
+            _ => "ChunkDMesh",
+        };
     }
 
     private void RefreshHeader()
@@ -186,8 +200,12 @@ public sealed class MainForm : Form
     {
         _theme = theme;
         BackgroundColor = theme.BgDark;
+        _headerBar.BackgroundColor = theme.BgCard;
+        _pageTitle.TextColor = theme.TextPrimary;
         _statusBadge.TextColor = theme.TextMuted;
         _sidebar.BackgroundColor = theme.BgCard;
+        _themeToggle.BackgroundColor = theme.BgCard;
+        _toastOverlay.BackgroundColor = Color.FromArgb(200, 0, 0, 0);
         _dashboardView.ApplyTheme(theme);
         _performanceView.ApplyTheme(theme);
         _leaderboardView.ApplyTheme(theme);

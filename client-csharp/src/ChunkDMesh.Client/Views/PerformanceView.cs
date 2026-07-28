@@ -13,6 +13,8 @@ public sealed class PerformanceView : Panel
     private readonly StatCard _cardPeak;
     private readonly StatCard _cardTotal;
     private readonly Drawable _chart;
+    private Label _pageTitle;
+    private Label _lastRefresh;
     private ThemeColors _theme = ThemeColors.Dark;
 
     public PerformanceView(MetricsService metrics)
@@ -25,10 +27,23 @@ public sealed class PerformanceView : Panel
 
         _chart = new Drawable
         {
-            Size = new Size(600, 250),
-            MinimumSize = new Size(300, 150),
+            MinimumSize = new Size(300, 200),
         };
         _chart.Paint += DrawChart;
+
+        _pageTitle = new Label
+        {
+            Text = "Performance",
+            Font = Fonts.Sans(18, FontStyle.Bold),
+            TextColor = _theme.TextPrimary,
+        };
+
+        _lastRefresh = new Label
+        {
+            Text = "",
+            Font = Fonts.Sans(9),
+            TextColor = _theme.TextMuted,
+        };
 
         _metrics.SampleAdded += _ => Application.Instance.AsyncInvoke(() =>
         {
@@ -42,35 +57,58 @@ public sealed class PerformanceView : Panel
     private void BuildLayout()
     {
         var headerFont = Fonts.Sans(14, FontStyle.Bold);
-        Content = new Scrollable
+
+        var headerRow = new StackLayout
         {
-            Content = new TableLayout
+            Orientation = Orientation.Horizontal,
+            Spacing = 12,
+            Items =
             {
-                Padding = new Padding(20),
-                Spacing = new Size(0, 16),
-                Rows =
-                {
-                    new TableRow(new Label { Text = "Performance Metrics", Font = headerFont, TextColor = _theme.TextPrimary }),
-                    new TableRow(_cardAvg, _cardPeak, _cardTotal),
-                    new TableRow(new StackLayout
-                    {
-                        Orientation = Orientation.Horizontal,
-                        Items = { new Label { Text = "Chunk Rate Over Time", Font = Fonts.Sans(11, FontStyle.Bold), TextColor = _theme.TextSecondary } }
-                    }),
-                    new TableRow { ScaleHeight = true, Cells = { new TableCell(_chart, true) } },
-                    new TableRow(new Label { Text = "Stats shown every second. Hover data is sampled from the work loop.", TextColor = _theme.TextMuted, Font = Fonts.Sans(9) }),
-                }
+                _pageTitle,
+                null,
+                _lastRefresh,
             }
         };
+
+        var cardsRow = new TableRow(_cardAvg, _cardPeak, _cardTotal);
+
+        var chartHeader = new StackLayout
+        {
+            Orientation = Orientation.Horizontal,
+            Items =
+            {
+                new Label { Text = "Chunk Rate Over Time", Font = Fonts.Sans(11, FontStyle.Bold), TextColor = _theme.TextPrimary },
+                null,
+                new Label { Text = "Live chart · 1 sample/sec", Font = Fonts.Sans(9), TextColor = _theme.TextMuted },
+            }
+        };
+
+        var content = new TableLayout
+        {
+            Padding = new Padding(20, 12),
+            Spacing = new Size(0, 16),
+            Rows =
+            {
+                new TableRow(headerRow),
+                new TableRow(cardsRow),
+                new TableRow(chartHeader),
+                new TableRow { ScaleHeight = true, Cells = { new TableCell(_chart, true) } },
+            }
+        };
+
+        Content = new Scrollable { Content = content };
     }
 
     public void ApplyTheme(ThemeColors theme)
     {
         _theme = theme;
         BackgroundColor = theme.BgDark;
+        _pageTitle.TextColor = theme.TextPrimary;
+        _lastRefresh.TextColor = theme.TextMuted;
         _cardAvg.ApplyTheme(theme);
         _cardPeak.ApplyTheme(theme);
         _cardTotal.ApplyTheme(theme);
+        _chart.Invalidate();
     }
 
     private void RefreshStats()
@@ -84,6 +122,8 @@ public sealed class PerformanceView : Panel
             ? "< 1 min"
             : $"{_metrics.Uptime.TotalMinutes:F0} min";
         _cardTotal.Subtext = $"{_metrics.History.Count} samples";
+
+        _lastRefresh.Text = $"Updated {DateTime.Now:HH:mm:ss}";
 
         if (_metrics.History.Count > 1)
         {
@@ -105,8 +145,8 @@ public sealed class PerformanceView : Panel
             return;
         }
 
-        var margin = 40f;
-        var plotRect = new RectangleF(margin, 10, rect.Width - margin * 2, rect.Height - 20);
+        var margin = 50f;
+        var plotRect = new RectangleF(margin, 10, rect.Width - margin * 2, rect.Height - 30);
 
         var rates = samples.Select(s => (float)s.ChunksPerSecond).ToArray();
         var maxRate = Math.Max(rates.Max(), 0.1f);
@@ -148,11 +188,11 @@ public sealed class PerformanceView : Panel
         g.FillPolygon(fillBrush, fillPts);
 
         // Line
-        using var linePen = new Pen(_theme.ChartLine, 1.5f);
+        using var linePen = new Pen(_theme.Accent, 2f);
         g.DrawLines(linePen, pts);
 
-        // Highlight area labels
-        g.DrawText(Fonts.Sans(9), _theme.TextMuted, plotRect.Left, 0,
+        // Sample count
+        g.DrawText(Fonts.Sans(9), _theme.TextMuted, plotRect.Left, plotRect.Top - 4,
             $"{rates.Length} samples · max {maxRate:F1} ch/s");
     }
 }

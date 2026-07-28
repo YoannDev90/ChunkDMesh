@@ -34,7 +34,6 @@ public sealed class ActivityFeed : Drawable
         if (_entries.Count > 50)
             _entries.RemoveAt(0);
 
-        // Auto-scroll: keep last entries visible
         Invalidate();
     }
 
@@ -48,36 +47,33 @@ public sealed class ActivityFeed : Drawable
     {
         base.OnPaint(e);
         var g = e.Graphics;
+        var rect = new RectangleF(PointF.Empty, Size);
 
-        // Background
-        g.FillRectangle(new SolidBrush(_theme.BgCard), new RectangleF(PointF.Empty, Size));
+        g.FillRectangle(new SolidBrush(_theme.BgCard), rect);
 
-        var y = 6f;
-        var entryHeight = 28f;
-        var maxVisible = (int)(Size.Height / entryHeight) - 1;
+        var y = 4f;
+        var entryHeight = 26f;
+        var maxVisible = Math.Max(1, (int)(rect.Height / entryHeight) - 1);
         var startIdx = Math.Max(0, _entries.Count - maxVisible);
 
-        var tsFont = Fonts.Sans(8);
-        var msgFont = Fonts.Sans(10);
+        var tsFont = Fonts.Sans(7);
+        var msgFont = Fonts.Sans(9);
 
         for (int i = startIdx; i < _entries.Count; i++)
         {
             var e2 = _entries[i];
-            if (y + entryHeight > Size.Height) break;
+            if (y + entryHeight > rect.Height) break;
 
-            // Accent dot
-            g.FillEllipse(new SolidBrush(e2.Accent), 10, y + 4, 6, 6);
+            var bgColor = i == _entries.Count - 1 ? _theme.BgInput : _theme.BgCard;
+            g.FillRectangle(new SolidBrush(bgColor), 0, y, rect.Width, entryHeight);
 
-            // Icon
-            g.DrawText(msgFont, _theme.TextMuted, 22, y, e2.Icon);
+            g.FillEllipse(new SolidBrush(e2.Accent), 10, y + 5, 6, 6);
+            g.DrawText(msgFont, _theme.TextMuted, 22, y + 1, e2.Icon);
+            g.DrawText(msgFont, _theme.TextSecondary, 40, y + 1, e2.Message);
 
-            // Message
-            g.DrawText(msgFont, _theme.TextSecondary, 42, y, e2.Message);
-
-            // Timestamp
             var ts = e2.Timestamp.ToString("HH:mm:ss");
             var tw = tsFont.MeasureString(ts).Width;
-            g.DrawText(tsFont, _theme.TextMuted, Size.Width - tw - 10, y, ts);
+            g.DrawText(tsFont, _theme.TextMuted, rect.Width - tw - 10, y + 1, ts);
 
             y += entryHeight;
         }
