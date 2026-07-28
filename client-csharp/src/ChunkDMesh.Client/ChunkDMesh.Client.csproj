@@ -21,4 +21,10 @@
     <PackageReference Include="ZstdSharp" Version="0.7.2" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Include="Resources\Fonts\MaterialDesignIcons-Regular.ttf">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
 </Project>

@@ -1,3 +1,5 @@
+using System.IO;
+using System.Reflection;
 using ChunkDMesh.Client.Models;
 using ChunkDMesh.Client.Services;
 using ChunkDMesh.Client.Views;
@@ -8,6 +10,7 @@ namespace ChunkDMesh.Client;
 
 public sealed class MainForm : Form
 {
+    private static readonly string MdiFontFamily = "Material Design Icons";
     private readonly AppController _ctrl;
     private readonly MetricsService _metrics;
     private readonly NotificationService _notifications;
@@ -59,15 +62,23 @@ public sealed class MainForm : Form
         };
 
         _sidebarButtons = new List<Button>();
-        var sidebarItems = new[] { "Dashboard", "Performance", "Leaderboard", "Settings" };
+        var sidebarItems = new[]
+        {
+            (Codepoint: "\uf056e", Label: " Dashboard"),
+            (Codepoint: "\uf04c5", Label: " Performance"),
+            (Codepoint: "\uf0538", Label: " Leaderboard"),
+            (Codepoint: "\uf0493", Label: " Settings"),
+        };
+
+        var mdiFont = LoadMdiFont();
 
         for (int i = 0; i < sidebarItems.Length; i++)
         {
-            var name = sidebarItems[i];
+            var item = sidebarItems[i];
             var btn = new Button
             {
-                Text = name,
-                Font = Fonts.Sans(12, i == 0 ? FontStyle.Bold : FontStyle.None),
+                Text = $"{item.Codepoint}{item.Label}",
+                Font = mdiFont != null ? new Font(new FontFamily(mdiFont), 14) : Fonts.Sans(12),
                 BackgroundColor = i == 0 ? _theme.Accent : _theme.BgCard,
                 TextColor = i == 0 ? Color.FromArgb(255, 255, 255) : _theme.TextSecondary,
                 Size = new Size(185, 40),
@@ -224,6 +235,34 @@ public sealed class MainForm : Form
             btn.Font = Fonts.Sans(12, isActive ? FontStyle.Bold : FontStyle.None);
         }
         SwitchView(index);
+    }
+
+    private static string? LoadMdiFont()
+    {
+        try
+        {
+            var appDir = Path.GetDirectoryName(Assembly.GetEntryAssembly()?.Location);
+            if (string.IsNullOrEmpty(appDir)) return null;
+            var fontFile = Path.Combine(appDir, "MaterialDesignIcons-Regular.ttf");
+            if (!File.Exists(fontFile)) return null;
+
+            var localFontDir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                ".local", "share", "fonts");
+            Directory.CreateDirectory(localFontDir);
+            var targetPath = Path.Combine(localFontDir, "MaterialDesignIcons-Regular.ttf");
+            if (!File.Exists(targetPath))
+            {
+                File.Copy(fontFile, targetPath, overwrite: true);
+            }
+
+            var fcCache = Path.Combine(localFontDir, "..", ".");
+            return MdiFontFamily;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private void ApplyTheme(ThemeColors theme)
