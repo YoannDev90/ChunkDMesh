@@ -59,25 +59,19 @@ public sealed class MainForm : Form
         };
 
         _sidebarButtons = new List<Button>();
-        var sidebarItems = new[]
-        {
-            (Icon: "▣", Label: " Dashboard"),
-            (Icon: "▤", Label: " Performance"),
-            (Icon: "▥", Label: " Leaderboard"),
-            (Icon: "⚙", Label: " Settings"),
-        };
+        var sidebarItems = new[] { "Dashboard", "Performance", "Leaderboard", "Settings" };
 
         for (int i = 0; i < sidebarItems.Length; i++)
         {
-            var item = sidebarItems[i];
+            var name = sidebarItems[i];
             var btn = new Button
             {
-                Text = $"  {item.Icon}{item.Label}",
-                Font = Fonts.Sans(12),
+                Text = name,
+                Font = Fonts.Sans(12, i == 0 ? FontStyle.Bold : FontStyle.None),
                 BackgroundColor = i == 0 ? _theme.Accent : _theme.BgCard,
                 TextColor = i == 0 ? Color.FromArgb(255, 255, 255) : _theme.TextSecondary,
-                Size = new Size(185, 44),
-                MinimumSize = new Size(185, 44),
+                Size = new Size(185, 40),
+                MinimumSize = new Size(185, 40),
             };
             btn.Click += (_, _) => SelectSidebar(i);
             _sidebarButtons.Add(btn);
@@ -224,8 +218,10 @@ public sealed class MainForm : Form
         for (int i = 0; i < _sidebarButtons.Count; i++)
         {
             var btn = _sidebarButtons[i];
-            btn.BackgroundColor = i == index ? _theme.Accent : _theme.BgCard;
-            btn.TextColor = i == index ? Color.FromArgb(255, 255, 255) : _theme.TextSecondary;
+            var isActive = i == index;
+            btn.BackgroundColor = isActive ? _theme.Accent : _theme.BgCard;
+            btn.TextColor = isActive ? Color.FromArgb(255, 255, 255) : _theme.TextSecondary;
+            btn.Font = Fonts.Sans(12, isActive ? FontStyle.Bold : FontStyle.None);
         }
         SwitchView(index);
     }
@@ -240,11 +236,7 @@ public sealed class MainForm : Form
         _themeToggle.BackgroundColor = theme.BgCard;
         _toastOverlay.BackgroundColor = Color.FromArgb(200, 0, 0, 0);
         _sidebarLayout.BackgroundColor = theme.BgCard;
-        _sidebarButtons[SelectedSidebarIndex].BackgroundColor = theme.Accent;
-        for (int i = 0; i < _sidebarButtons.Count; i++)
-        {
-            _sidebarButtons[i].TextColor = i == SelectedSidebarIndex ? Color.FromArgb(255, 255, 255) : theme.TextSecondary;
-        }
+        SelectSidebar(SelectedSidebarIndex);
         _dashboardView.ApplyTheme(theme);
         _performanceView.ApplyTheme(theme);
         _leaderboardView.ApplyTheme(theme);
