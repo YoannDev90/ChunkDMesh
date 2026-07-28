@@ -18,7 +18,8 @@ public sealed class MainForm : Form
     private readonly Panel _contentArea;
     private readonly Label _statusBadge;
     private readonly Label _pageTitle;
-    private readonly ListBox _sidebar;
+    private readonly StackLayout _sidebarLayout;
+    private readonly List<Button> _sidebarButtons;
     private readonly StackLayout _headerBar;
     private readonly UITimer _metricsTimer;
     private readonly Panel _toastOverlay;
@@ -49,18 +50,38 @@ public sealed class MainForm : Form
             ApplyTheme(theme);
         };
 
-        _sidebar = new ListBox
+        _sidebarLayout = new StackLayout
         {
-            Width = 180,
-            Size = new Size(180, -1),
+            Orientation = Orientation.Vertical,
+            Padding = new Padding(0),
+            Spacing = 2,
             BackgroundColor = _theme.BgCard,
         };
-        _sidebar.Items.Add("  📊  Dashboard");
-        _sidebar.Items.Add("  ⚡  Performance");
-        _sidebar.Items.Add("  🏆  Leaderboard");
-        _sidebar.Items.Add("  ⚙️  Settings");
-        _sidebar.SelectedIndex = 0;
-        _sidebar.SelectedIndexChanged += (_, _) => SwitchView(_sidebar.SelectedIndex);
+
+        var sidebarItems = new[]
+        {
+            (Icon: "📊", Label: "Dashboard"),
+            (Icon: "⚡", Label: "Performance"),
+            (Icon: "🏆", Label: "Leaderboard"),
+            (Icon: "⚙️", Label: "Settings"),
+        };
+
+        _sidebarButtons = new List<Button>();
+        for (int i = 0; i < sidebarItems.Length; i++)
+        {
+            var item = sidebarItems[i];
+            var btn = new Button
+            {
+                Text = $"{item.Icon}  {item.Label}",
+                Font = Fonts.Sans(11),
+                BackgroundColor = i == 0 ? _theme.Accent : _theme.BgCard,
+                TextColor = i == 0 ? Color.FromArgb(255, 255, 255) : _theme.TextSecondary,
+                Size = new Size(180, 40),
+            };
+            btn.Click += (_, _) => SelectSidebar(i);
+            _sidebarButtons.Add(btn);
+            _sidebarLayout.Items.Add(new StackLayoutItem(btn, false));
+        }
 
         _pageTitle = new Label
         {
@@ -109,7 +130,7 @@ public sealed class MainForm : Form
         var splitter = new Splitter
         {
             Orientation = Orientation.Horizontal,
-            Panel1 = _sidebar,
+            Panel1 = _sidebarLayout,
             Panel2 = _contentArea,
             FixedPanel = SplitterFixedPanel.Panel1,
             RelativePosition = 180,
@@ -157,12 +178,13 @@ public sealed class MainForm : Form
         };
         _metricsTimer.Start();
 
-        SwitchView(0);
+        SelectSidebar(0);
         _ = _ctrl.TryRestoreSessionAsync();
     }
 
     private void SwitchView(int index)
     {
+        SelectedSidebarIndex = index;
         Control view = index switch
         {
             0 => _dashboardView,
@@ -196,6 +218,17 @@ public sealed class MainForm : Form
         };
     }
 
+    private void SelectSidebar(int index)
+    {
+        for (int i = 0; i < _sidebarButtons.Count; i++)
+        {
+            var btn = _sidebarButtons[i];
+            btn.BackgroundColor = i == index ? _theme.Accent : _theme.BgCard;
+            btn.TextColor = i == index ? Color.FromArgb(255, 255, 255) : _theme.TextSecondary;
+        }
+        SwitchView(index);
+    }
+
     private void ApplyTheme(ThemeColors theme)
     {
         _theme = theme;
@@ -203,14 +236,21 @@ public sealed class MainForm : Form
         _headerBar.BackgroundColor = theme.BgCard;
         _pageTitle.TextColor = theme.TextPrimary;
         _statusBadge.TextColor = theme.TextMuted;
-        _sidebar.BackgroundColor = theme.BgCard;
         _themeToggle.BackgroundColor = theme.BgCard;
         _toastOverlay.BackgroundColor = Color.FromArgb(200, 0, 0, 0);
+        _sidebarLayout.BackgroundColor = theme.BgCard;
+        _sidebarButtons[SelectedSidebarIndex].BackgroundColor = theme.Accent;
+        for (int i = 0; i < _sidebarButtons.Count; i++)
+        {
+            _sidebarButtons[i].TextColor = i == SelectedSidebarIndex ? Color.FromArgb(255, 255, 255) : theme.TextSecondary;
+        }
         _dashboardView.ApplyTheme(theme);
         _performanceView.ApplyTheme(theme);
         _leaderboardView.ApplyTheme(theme);
         _settingsView.ApplyTheme(theme);
     }
+
+    private int SelectedSidebarIndex = 0;
 
     protected override void OnClosed(EventArgs e)
     {
