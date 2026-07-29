@@ -27,7 +27,14 @@ public sealed class LeaderboardView : Panel
         _chunksLabel = new Label { Font = Fonts.Sans(11), TextColor = _theme.TextSecondary };
         _myRankLabel = new Label { Font = Fonts.Sans(18, FontStyle.Bold), TextColor = _theme.Accent };
 
-        _searchBox = new TextBox { Width = 200, PlaceholderText = "Search players..." };
+        _searchBox = new TextBox
+        {
+            Width = 200,
+            PlaceholderText = "Search players...",
+            BackgroundColor = _theme.BgInput,
+            TextColor = _theme.TextPrimary,
+            Font = Fonts.Sans(11),
+        };
 
         _grid = new GridView<LeaderboardEntry>
         {

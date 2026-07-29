@@ -21,8 +21,8 @@ public sealed class SettingsView : Panel
     {
         _ctrl = ctrl;
 
-        _serverBox = new TextBox { Text = "http://127.0.0.1:8000", Width = 350 };
-        _inviteBox = new TextBox { Width = 350, PlaceholderText = "CHUNK-XXXX-XXXX" };
+        _serverBox = new TextBox { Text = "http://127.0.0.1:8000", Width = 350, BackgroundColor = _theme.BgInput, TextColor = _theme.TextPrimary, Font = Fonts.Sans(11) };
+        _inviteBox = new TextBox { Width = 350, PlaceholderText = "CHUNK-XXXX-XXXX", BackgroundColor = _theme.BgInput, TextColor = _theme.TextPrimary, Font = Fonts.Sans(11) };
 
         _themeSelect = new DropDown
         {

@@ -109,8 +109,8 @@ public sealed class MainForm : Form
 
         _themeToggle = new Button
         {
-            Text = "☀",
-            Size = new Size(32, 28),
+            Text = "🌓",
+            Size = new Size(36, 36),
             ToolTip = "Toggle dark/light theme",
         };
         _themeToggle.Click += (_, _) =>
@@ -148,8 +148,9 @@ public sealed class MainForm : Form
         _toastOverlay = new Panel
         {
             Visible = false,
-            BackgroundColor = Color.FromArgb(200, 0, 0, 0),
-            Size = new Size(400, 32),
+            BackgroundColor = Color.FromArgb(220, 0, 0, 0),
+            Size = new Size(380, 36),
+            Padding = new Padding(12, 8),
         };
 
         _toastLabel = new Label
@@ -157,7 +158,7 @@ public sealed class MainForm : Form
             Text = "",
             TextColor = Color.FromArgb(255, 255, 255),
             Font = Fonts.Sans(10),
-            Size = new Size(400, 32),
+            VerticalAlignment = VerticalAlignment.Center,
         };
         _toastOverlay.Content = _toastLabel;
 
@@ -302,10 +303,16 @@ public sealed class SidebarNavItem : Drawable
         // Background
         g.FillRectangle(new SolidBrush(_isActive ? _theme.Accent : _theme.BgCard), rect);
 
+        // Left accent bar for active item
+        if (_isActive)
+        {
+            g.FillRectangle(new SolidBrush(_theme.Accent), 0, 0, 3, rect.Height);
+        }
+
         // Draw icon (centered vertically, left-aligned)
         if (_icon != null)
         {
-            var iconX = 6f;
+            var iconX = 10f;
             var iconY = (rect.Height - 24) / 2f;
             g.DrawImage(_icon, iconX, iconY, 24, 24);
         }
@@ -314,7 +321,7 @@ public sealed class SidebarNavItem : Drawable
         var labelFont = Fonts.Sans(11);
         var labelColor = _isActive ? Color.FromArgb(255, 255, 255) : _theme.TextSecondary;
         var textY = (rect.Height - labelFont.MeasureString("Ag").Height) / 2;
-        g.DrawText(labelFont, labelColor, _icon != null ? 36 : 8, textY, Label);
+        g.DrawText(labelFont, labelColor, _icon != null ? 42 : 8, textY, Label);
     }
 
     public void ApplyTheme(ThemeColors theme)
