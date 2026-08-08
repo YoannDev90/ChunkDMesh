@@ -81,7 +81,6 @@
 </head>
 <body>
 <div class="grid">
-    <!-- Hero -->
     <div class="hero">
         <div class="badge">OPEN SOURCE &middot; APACHE 2.0</div>
         <h1><span>Chunk</span>DMesh</h1>
@@ -93,10 +92,9 @@
         </div>
     </div>
 
-    <!-- Project Info -->
-    <div class="panel" id="project-panel">
+    <div class="panel">
         <div class="panel-title">Project</div>
-        <div class="project-grid" id="project">
+        <div class="project-grid">
             <span class="label">World</span><span class="val bold">SurvivalWorld</span>
             <span class="label">Seed</span><span class="val">-4832917462834917</span>
             <span class="label">Dimension</span><span class="val">overworld</span>
@@ -114,10 +112,9 @@
         </div>
     </div>
 
-    <!-- Requests -->
-    <div class="panel" id="requests-panel">
+    <div class="panel">
         <div class="panel-title">Requests <span style="color:var(--dim)">[18]</span></div>
-        <div id="requests" style="overflow-y:auto;max-height:140px;">
+        <div style="overflow-y:auto;max-height:140px;">
             <table class="req-table">
                 <tr><td class="time">14:32:01</td><td class="path">POST /client/upload</td><td class="status s-2xx">200</td></tr>
                 <tr><td class="time">14:31:58</td><td class="path">POST /client/heartbeat</td><td class="status s-2xx">200</td></tr>
@@ -141,8 +138,7 @@
         </div>
     </div>
 
-    <!-- Heatmap -->
-    <div class="panel full" id="heatmap-panel">
+    <div class="panel full">
         <div class="panel-title">Heatmap</div>
         <div class="heatmap-wrap">
             <div class="heatmap" id="heatmap"></div>
@@ -157,32 +153,30 @@
         </div>
     </div>
 
-    <!-- Logs -->
-    <div class="panel full" id="logs-panel" style="display:flex;flex-direction:column;">
+    <div class="panel full" style="display:flex;flex-direction:column;">
         <div class="panel-title">Logs</div>
-        <div class="logs-scroll" id="logs">
-            <div class="log-line"><span class="log-ts">14:32:01</span><span class="log-icon">📤</span><span class="log-msg">Client <span style="color:var(--cyan)">worker-07</span> uploaded region (12, -5) — 847ms</span></div>
-            <div class="log-line"><span class="log-ts">14:31:58</span><span class="log-icon">💓</span><span class="log-msg">Heartbeat from <span style="color:var(--cyan)">worker-03</span> — score: 142</span></div>
-            <div class="log-line"><span class="log-ts">14:31:55</span><span class="log-icon">📋</span><span class="log-msg">Assigned 4 regions to <span style="color:var(--cyan)">worker-11</span></span></div>
-            <div class="log-line"><span class="log-ts">14:31:52</span><span class="log-icon">✅</span><span class="log-msg">Region (8, -3) validated — SHA-256 match</span></div>
-            <div class="log-line"><span class="log-ts">14:31:48</span><span class="log-icon">🚀</span><span class="log-msg">New client <span style="color:var(--cyan)">worker-12</span> connected — power: 98</span></div>
-            <div class="log-line"><span class="log-ts">14:31:45</span><span class="log-icon">🔐</span><span class="log-msg">JWT issued for <span style="color:var(--cyan)">worker-12</span></span></div>
-            <div class="log-line"><span class="log-ts">14:31:40</span><span class="log-icon">📊</span><span class="log-msg">Progress: 73.4% — 8 working, 24 assigned, 4,680 completed</span></div>
-            <div class="log-line"><span class="log-ts">14:31:38</span><span class="log-icon">🗺️</span><span class="log-msg">Heatmap updated — 6,420 total regions</span></div>
-            <div class="log-line"><span class="log-ts">14:31:35</span><span class="log-icon">📤</span><span class="log-msg">Client <span style="color:var(--cyan)">worker-05</span> uploaded region (15, 2) — 1,203ms</span></div>
-            <div class="log-line"><span class="log-ts">14:31:30</span><span class="log-icon">💓</span><span class="log-msg">Heartbeat from <span style="color:var(--cyan)">worker-09</span> — score: 156</span></div>
-            <div class="log-line"><span class="log-ts">14:31:25</span><span class="log-icon">📋</span><span class="log-msg">Assigned 4 regions to <span style="color:var(--cyan)">worker-02</span></span></div>
-            <div class="log-line"><span class="log-ts">14:31:20</span><span class="log-icon">⚠️</span><span class="log-msg">Upload conflict region (3, 7) — already completed by worker-04</span></div>
-            <div class="log-line"><span class="log-ts">14:31:15</span><span class="log-icon">🔐</span><span class="log-msg">JWT issued for <span style="color:var(--cyan)">worker-08</span></span></div>
-            <div class="log-line"><span class="log-ts">14:31:10</span><span class="log-icon">📦</span><span class="log-msg">Storage: 2,048 MB across 4,680 region files</span></div>
-            <div class="log-line"><span class="log-ts">14:31:05</span><span class="log-icon">📤</span><span class="log-msg">Client <span style="color:var(--cyan)">worker-01</span> uploaded region (-4, 11) — 956ms</span></div>
-            <div class="log-line"><span class="log-ts">14:31:00</span><span class="log-icon">💓</span><span class="log-msg">Heartbeat from <span style="color:var(--cyan)">worker-06</span> — score: 128</span></div>
-            <div class="log-line"><span class="log-ts">14:30:55</span><span class="log-icon">📤</span><span class="log-msg">Client <span style="color:var(--cyan)">worker-10</span> uploaded region (7, -9) — 1,102ms</span></div>
-            <div class="log-line"><span class="log-ts">14:30:50</span><span class="log-icon">📋</span><span class="log-msg">Assigned 4 regions to <span style="color:var(--cyan)">worker-04</span></span></div>
+        <div class="logs-scroll">
+            <div class="log-line"><span class="log-ts">14:32:01</span><span class="log-icon">&#x1f4e4;</span><span class="log-msg">Client <span style="color:var(--cyan)">worker-07</span> uploaded region (12, -5) — 847ms</span></div>
+            <div class="log-line"><span class="log-ts">14:31:58</span><span class="log-icon">&#x1f496;</span><span class="log-msg">Heartbeat from <span style="color:var(--cyan)">worker-03</span> — score: 142</span></div>
+            <div class="log-line"><span class="log-ts">14:31:55</span><span class="log-icon">&#x1f4cb;</span><span class="log-msg">Assigned 4 regions to <span style="color:var(--cyan)">worker-11</span></span></div>
+            <div class="log-line"><span class="log-ts">14:31:52</span><span class="log-icon">&#x2705;</span><span class="log-msg">Region (8, -3) validated — SHA-256 match</span></div>
+            <div class="log-line"><span class="log-ts">14:31:48</span><span class="log-icon">&#x1f680;</span><span class="log-msg">New client <span style="color:var(--cyan)">worker-12</span> connected — power: 98</span></div>
+            <div class="log-line"><span class="log-ts">14:31:45</span><span class="log-icon">&#x1f510;</span><span class="log-msg">JWT issued for <span style="color:var(--cyan)">worker-12</span></span></div>
+            <div class="log-line"><span class="log-ts">14:31:40</span><span class="log-icon">&#x1f4ca;</span><span class="log-msg">Progress: 73.4% — 8 working, 24 assigned, 4,680 completed</span></div>
+            <div class="log-line"><span class="log-ts">14:31:38</span><span class="log-icon">&#x1f5fa;</span><span class="log-msg">Heatmap updated — 6,420 total regions</span></div>
+            <div class="log-line"><span class="log-ts">14:31:35</span><span class="log-icon">&#x1f4e4;</span><span class="log-msg">Client <span style="color:var(--cyan)">worker-05</span> uploaded region (15, 2) — 1,203ms</span></div>
+            <div class="log-line"><span class="log-ts">14:31:30</span><span class="log-icon">&#x1f496;</span><span class="log-msg">Heartbeat from <span style="color:var(--cyan)">worker-09</span> — score: 156</span></div>
+            <div class="log-line"><span class="log-ts">14:31:25</span><span class="log-icon">&#x1f4cb;</span><span class="log-msg">Assigned 4 regions to <span style="color:var(--cyan)">worker-02</span></span></div>
+            <div class="log-line"><span class="log-ts">14:31:20</span><span class="log-icon">&#x26a0;</span><span class="log-msg">Upload conflict region (3, 7) — already completed by worker-04</span></div>
+            <div class="log-line"><span class="log-ts">14:31:15</span><span class="log-icon">&#x1f510;</span><span class="log-msg">JWT issued for <span style="color:var(--cyan)">worker-08</span></span></div>
+            <div class="log-line"><span class="log-ts">14:31:10</span><span class="log-icon">&#x1f4e6;</span><span class="log-msg">Storage: 2,048 MB across 4,680 region files</span></div>
+            <div class="log-line"><span class="log-ts">14:31:05</span><span class="log-icon">&#x1f4e4;</span><span class="log-msg">Client <span style="color:var(--cyan)">worker-01</span> uploaded region (-4, 11) — 956ms</span></div>
+            <div class="log-line"><span class="log-ts">14:31:00</span><span class="log-icon">&#x1f496;</span><span class="log-msg">Heartbeat from <span style="color:var(--cyan)">worker-06</span> — score: 128</span></div>
+            <div class="log-line"><span class="log-ts">14:30:55</span><span class="log-icon">&#x1f4e4;</span><span class="log-msg">Client <span style="color:var(--cyan)">worker-10</span> uploaded region (7, -9) — 1,102ms</span></div>
+            <div class="log-line"><span class="log-ts">14:30:50</span><span class="log-icon">&#x1f4cb;</span><span class="log-msg">Assigned 4 regions to <span style="color:var(--cyan)">worker-04</span></span></div>
         </div>
     </div>
 
-    <!-- Actions -->
     <div class="panel full" style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
         <div class="actions">
             <a class="btn" href="map.html">Live Map</a>
@@ -195,22 +189,20 @@
 </div>
 
 <script>
-// Generate mock heatmap
-const heatmap = document.getElementById('heatmap');
-const cols = 20, rows = 14;
-const statuses = ['validated','completed','completed','completed','working','assigned','pending','pending','hash_error'];
-heatmap.style.gridTemplateColumns = `repeat(${cols}, 14px)`;
-let html = '';
-for (let z = 0; z < rows; z++) {
-    for (let x = 0; x < cols; x++) {
-        const dist = Math.sqrt(Math.pow(x - cols/2, 2) + Math.pow(z - rows/2, 2));
-        let st;
+var heatmap = document.getElementById('heatmap');
+var cols = 20, rows = 14;
+heatmap.style.gridTemplateColumns = 'repeat(' + cols + ', 14px)';
+var html = '';
+for (var z = 0; z < rows; z++) {
+    for (var x = 0; x < cols; x++) {
+        var dist = Math.sqrt(Math.pow(x - cols/2, 2) + Math.pow(z - rows/2, 2));
+        var st;
         if (dist > 8) st = 'pending';
         else if (dist > 6) st = Math.random() > 0.5 ? 'assigned' : 'pending';
         else if (dist > 4) st = Math.random() > 0.3 ? 'completed' : 'working';
         else if (dist > 2) st = Math.random() > 0.1 ? 'validated' : 'completed';
         else st = Math.random() > 0.05 ? 'validated' : 'hash_error';
-        html += `<div class="cell ${st}" title="(${x - Math.floor(cols/2)},${z - Math.floor(rows/2)}) ${st}"></div>`;
+        html += '<div class="cell ' + st + '" title="(' + (x - Math.floor(cols/2)) + ',' + (z - Math.floor(rows/2)) + ') ' + st + '"></div>';
     }
 }
 heatmap.innerHTML = html;
