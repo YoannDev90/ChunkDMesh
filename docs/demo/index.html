@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ChunkDMesh - Distributed Minecraft World Pre-Generation</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --bg: #0a0a0a; --panel: #111; --border: #222;
+            --text: #ddd; --dim: #666; --green: #4ade80; --blue: #60a5fa;
+            --yellow: #facc15; --red: #f87171; --cyan: #22d3ee;
+            --magenta: #e879f9;
+        }
+        body { font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace; background: var(--bg); color: var(--text); font-size: 13px; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: auto auto 1fr auto; gap: 1px; height: 100vh; background: var(--border); }
+        .panel { background: var(--panel); padding: 12px 16px; overflow: hidden; }
+        .panel-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: var(--dim); margin-bottom: 10px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+        .full { grid-column: 1 / -1; }
+
+        .project-grid { display: grid; grid-template-columns: auto 1fr; gap: 4px 16px; }
+        .project-grid .label { color: var(--dim); }
+        .project-grid .val { color: var(--cyan); }
+        .project-grid .val.bold { color: #fff; font-weight: 700; }
+        .progress-bar { height: 6px; background: var(--border); border-radius: 3px; margin-top: 8px; overflow: hidden; }
+        .progress-fill { height: 100%; background: var(--green); border-radius: 3px; transition: width 0.5s; }
+        .progress-label { font-size: 11px; color: var(--dim); margin-top: 4px; }
+
+        .heatmap-wrap { overflow: auto; max-height: 200px; }
+        .heatmap { display: inline-grid; gap: 2px; }
+        .cell { width: 14px; height: 14px; border-radius: 2px; cursor: default; }
+        .cell.pending { background: #1e293b; }
+        .cell.assigned { background: var(--yellow); }
+        .cell.working { background: var(--blue); }
+        .cell.completed { background: var(--green); }
+        .cell.validated { background: #16a34a; }
+        .cell.hash_error { background: var(--red); }
+        .legend { display: flex; gap: 14px; margin-top: 8px; font-size: 11px; color: var(--dim); flex-wrap: wrap; }
+        .legend-dot { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
+
+        .req-table { width: 100%; border-collapse: collapse; }
+        .req-table td { padding: 3px 8px; white-space: nowrap; }
+        .req-table .time { color: var(--dim); width: 70px; }
+        .req-table .path { color: var(--cyan); }
+        .req-table .status { text-align: right; font-weight: 600; }
+        .s-2xx { color: var(--green); }
+        .s-3xx { color: var(--yellow); }
+        .s-4xx { color: var(--red); }
+        .s-5xx { color: var(--magenta); }
+
+        .logs-scroll { overflow-y: auto; max-height: 100%; }
+        .log-line { display: flex; gap: 8px; padding: 2px 0; }
+        .log-ts { color: var(--dim); flex-shrink: 0; width: 65px; }
+        .log-icon { flex-shrink: 0; width: 18px; text-align: center; }
+        .log-msg { color: var(--text); word-break: break-word; }
+
+        .actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+        .btn { padding: 6px 14px; border: 1px solid var(--border); border-radius: 4px; cursor: pointer; font-size: 12px; font-family: inherit; background: var(--panel); color: var(--text); transition: all 0.15s; text-decoration: none; display: inline-block; }
+        .btn:hover { border-color: var(--green); color: var(--green); }
+        .btn:active { background: var(--green); color: #000; }
+        .status-line { font-size: 11px; color: var(--dim); margin-left: auto; }
+
+        .hero { text-align: center; padding: 40px 20px; grid-column: 1 / -1; background: linear-gradient(180deg, #111 0%, #0a0a0a 100%); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; }
+        .hero h1 { font-size: 28px; color: #fff; letter-spacing: 2px; }
+        .hero h1 span { color: var(--green); }
+        .hero p { color: var(--dim); font-size: 14px; max-width: 600px; line-height: 1.6; }
+        .hero .badge { display: inline-block; padding: 4px 12px; border: 1px solid var(--green); border-radius: 20px; font-size: 11px; color: var(--green); }
+        .hero-links { display: flex; gap: 12px; margin-top: 8px; }
+        .hero-links a { color: var(--cyan); text-decoration: none; font-size: 12px; }
+        .hero-links a:hover { text-decoration: underline; }
+
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: var(--bg); }
+        ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+
+        @media (max-width: 768px) {
+            .grid { grid-template-columns: 1fr; grid-template-rows: auto; }
+            .full { grid-column: 1; }
+        }
+    </style>
+</head>
+<body>
+<div class="grid">
+    <!-- Hero -->
+    <div class="hero">
+        <div class="badge">OPEN SOURCE &middot; APACHE 2.0</div>
+        <h1><span>Chunk</span>DMesh</h1>
+        <p>Distributed platform for Minecraft world pre-generation. Volunteer clients generate chunks in parallel, a central server orchestrates and assembles the result.</p>
+        <div class="hero-links">
+            <a href="https://github.com/YoannDev90/ChunkDMesh" target="_blank">GitHub</a>
+            <a href="#dashboard">Dashboard Demo</a>
+            <a href="map.html">Live Map</a>
+        </div>
+    </div>
+
+    <!-- Project Info -->
+    <div class="panel" id="project-panel">
+        <div class="panel-title">Project</div>
+        <div class="project-grid" id="project">
+            <span class="label">World</span><span class="val bold">SurvivalWorld</span>
+            <span class="label">Seed</span><span class="val">-4832917462834917</span>
+            <span class="label">Dimension</span><span class="val">overworld</span>
+            <span class="label">Shape</span><span class="val">circle</span>
+            <span class="label">Loader</span><span class="val">fabric 1.20.4</span>
+            <span class="label">Radius</span><span class="val">1024 chunks</span>
+            <span class="label">Uptime</span><span class="val">3h 42m</span>
+            <span class="label">Clients</span><span class="val" style="color:var(--green)">12</span>
+            <span class="label">Requests</span><span class="val">1,847</span>
+            <span class="label">Storage</span><span class="val">2,048 MB</span>
+            <span class="label" style="grid-column:1/-1">
+                <div class="progress-bar"><div class="progress-fill" style="width:73.4%"></div></div>
+                <div class="progress-label">4,712 / 6,420 batches (73.4%) — 8 working, 24 assigned</div>
+            </span>
+        </div>
+    </div>
+
+    <!-- Requests -->
+    <div class="panel" id="requests-panel">
+        <div class="panel-title">Requests <span style="color:var(--dim)">[18]</span></div>
+        <div id="requests" style="overflow-y:auto;max-height:140px;">
+            <table class="req-table">
+                <tr><td class="time">14:32:01</td><td class="path">POST /client/upload</td><td class="status s-2xx">200</td></tr>
+                <tr><td class="time">14:31:58</td><td class="path">POST /client/heartbeat</td><td class="status s-2xx">200</td></tr>
+                <tr><td class="time">14:31:55</td><td class="path">GET /client/tasks?limit=4</td><td class="status s-2xx">200</td></tr>
+                <tr><td class="time">14:31:52</td><td class="path">POST /client/upload</td><td class="status s-2xx">200</td></tr>
+                <tr><td class="time">14:31:48</td><td class="path">POST /client/provision</td><td class="status s-2xx">200</td></tr>
+                <tr><td class="time">14:31:45</td><td class="path">POST /client/auth</td><td class="status s-2xx">200</td></tr>
+                <tr><td class="time">14:31:40</td><td class="path">GET /admin/project</td><td class="status s-2xx">200</td></tr>
+                <tr><td class="time">14:31:38</td><td class="path">GET /admin/heatmap</td><td class="status s-2xx">200</td></tr>
+                <tr><td class="time">14:31:35</td><td class="path">POST /client/upload</td><td class="status s-2xx">200</td></tr>
+                <tr><td class="time">14:31:30</td><td class="path">POST /client/heartbeat</td><td class="status s-2xx">200</td></tr>
+                <tr><td class="time">14:31:25</td><td class="path">GET /client/tasks?limit=4</td><td class="status s-2xx">200</td></tr>
+                <tr><td class="time">14:31:20</td><td class="path">POST /client/upload</td><td class="status s-4xx">409</td></tr>
+                <tr><td class="time">14:31:15</td><td class="path">POST /client/auth</td><td class="status s-2xx">200</td></tr>
+                <tr><td class="time">14:31:10</td><td class="path">GET /admin/stats</td><td class="status s-2xx">200</td></tr>
+                <tr><td class="time">14:31:05</td><td class="path">POST /client/upload</td><td class="status s-2xx">200</td></tr>
+                <tr><td class="time">14:31:00</td><td class="path">POST /client/heartbeat</td><td class="status s-2xx">200</td></tr>
+                <tr><td class="time">14:30:55</td><td class="path">POST /client/upload</td><td class="status s-2xx">200</td></tr>
+                <tr><td class="time">14:30:50</td><td class="path">GET /client/tasks?limit=4</td><td class="status s-2xx">200</td></tr>
+            </table>
+        </div>
+    </div>
+
+    <!-- Heatmap -->
+    <div class="panel full" id="heatmap-panel">
+        <div class="panel-title">Heatmap</div>
+        <div class="heatmap-wrap">
+            <div class="heatmap" id="heatmap"></div>
+        </div>
+        <div class="legend">
+            <span><span class="legend-dot" style="background:#1e293b"></span>Pending</span>
+            <span><span class="legend-dot" style="background:var(--yellow)"></span>Assigned</span>
+            <span><span class="legend-dot" style="background:var(--blue)"></span>Working</span>
+            <span><span class="legend-dot" style="background:var(--green)"></span>Completed</span>
+            <span><span class="legend-dot" style="background:#16a34a"></span>Validated</span>
+            <span><span class="legend-dot" style="background:var(--red)"></span>Error</span>
+        </div>
+    </div>
+
+    <!-- Logs -->
+    <div class="panel full" id="logs-panel" style="display:flex;flex-direction:column;">
+        <div class="panel-title">Logs</div>
+        <div class="logs-scroll" id="logs">
+            <div class="log-line"><span class="log-ts">14:32:01</span><span class="log-icon">📤</span><span class="log-msg">Client <span style="color:var(--cyan)">worker-07</span> uploaded region (12, -5) — 847ms</span></div>
+            <div class="log-line"><span class="log-ts">14:31:58</span><span class="log-icon">💓</span><span class="log-msg">Heartbeat from <span style="color:var(--cyan)">worker-03</span> — score: 142</span></div>
+            <div class="log-line"><span class="log-ts">14:31:55</span><span class="log-icon">📋</span><span class="log-msg">Assigned 4 regions to <span style="color:var(--cyan)">worker-11</span></span></div>
+            <div class="log-line"><span class="log-ts">14:31:52</span><span class="log-icon">✅</span><span class="log-msg">Region (8, -3) validated — SHA-256 match</span></div>
+            <div class="log-line"><span class="log-ts">14:31:48</span><span class="log-icon">🚀</span><span class="log-msg">New client <span style="color:var(--cyan)">worker-12</span> connected — power: 98</span></div>
+            <div class="log-line"><span class="log-ts">14:31:45</span><span class="log-icon">🔐</span><span class="log-msg">JWT issued for <span style="color:var(--cyan)">worker-12</span></span></div>
+            <div class="log-line"><span class="log-ts">14:31:40</span><span class="log-icon">📊</span><span class="log-msg">Progress: 73.4% — 8 working, 24 assigned, 4,680 completed</span></div>
+            <div class="log-line"><span class="log-ts">14:31:38</span><span class="log-icon">🗺️</span><span class="log-msg">Heatmap updated — 6,420 total regions</span></div>
+            <div class="log-line"><span class="log-ts">14:31:35</span><span class="log-icon">📤</span><span class="log-msg">Client <span style="color:var(--cyan)">worker-05</span> uploaded region (15, 2) — 1,203ms</span></div>
+            <div class="log-line"><span class="log-ts">14:31:30</span><span class="log-icon">💓</span><span class="log-msg">Heartbeat from <span style="color:var(--cyan)">worker-09</span> — score: 156</span></div>
+            <div class="log-line"><span class="log-ts">14:31:25</span><span class="log-icon">📋</span><span class="log-msg">Assigned 4 regions to <span style="color:var(--cyan)">worker-02</span></span></div>
+            <div class="log-line"><span class="log-ts">14:31:20</span><span class="log-icon">⚠️</span><span class="log-msg">Upload conflict region (3, 7) — already completed by worker-04</span></div>
+            <div class="log-line"><span class="log-ts">14:31:15</span><span class="log-icon">🔐</span><span class="log-msg">JWT issued for <span style="color:var(--cyan)">worker-08</span></span></div>
+            <div class="log-line"><span class="log-ts">14:31:10</span><span class="log-icon">📦</span><span class="log-msg">Storage: 2,048 MB across 4,680 region files</span></div>
+            <div class="log-line"><span class="log-ts">14:31:05</span><span class="log-icon">📤</span><span class="log-msg">Client <span style="color:var(--cyan)">worker-01</span> uploaded region (-4, 11) — 956ms</span></div>
+            <div class="log-line"><span class="log-ts">14:31:00</span><span class="log-icon">💓</span><span class="log-msg">Heartbeat from <span style="color:var(--cyan)">worker-06</span> — score: 128</span></div>
+            <div class="log-line"><span class="log-ts">14:30:55</span><span class="log-icon">📤</span><span class="log-msg">Client <span style="color:var(--cyan)">worker-10</span> uploaded region (7, -9) — 1,102ms</span></div>
+            <div class="log-line"><span class="log-ts">14:30:50</span><span class="log-icon">📋</span><span class="log-msg">Assigned 4 regions to <span style="color:var(--cyan)">worker-04</span></span></div>
+        </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="panel full" style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+        <div class="actions">
+            <a class="btn" href="map.html">Live Map</a>
+            <button class="btn" disabled>Assemble</button>
+            <button class="btn" disabled>Export</button>
+            <button class="btn" disabled>Torrent</button>
+        </div>
+        <div class="status-line">Demo mode — no server connected</div>
+    </div>
+</div>
+
+<script>
+// Generate mock heatmap
+const heatmap = document.getElementById('heatmap');
+const cols = 20, rows = 14;
+const statuses = ['validated','completed','completed','completed','working','assigned','pending','pending','hash_error'];
+heatmap.style.gridTemplateColumns = `repeat(${cols}, 14px)`;
+let html = '';
+for (let z = 0; z < rows; z++) {
+    for (let x = 0; x < cols; x++) {
+        const dist = Math.sqrt(Math.pow(x - cols/2, 2) + Math.pow(z - rows/2, 2));
+        let st;
+        if (dist > 8) st = 'pending';
+        else if (dist > 6) st = Math.random() > 0.5 ? 'assigned' : 'pending';
+        else if (dist > 4) st = Math.random() > 0.3 ? 'completed' : 'working';
+        else if (dist > 2) st = Math.random() > 0.1 ? 'validated' : 'completed';
+        else st = Math.random() > 0.05 ? 'validated' : 'hash_error';
+        html += `<div class="cell ${st}" title="(${x - Math.floor(cols/2)},${z - Math.floor(rows/2)}) ${st}"></div>`;
+    }
+}
+heatmap.innerHTML = html;
+</script>
+</body>
+</html>

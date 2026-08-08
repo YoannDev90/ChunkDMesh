@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ChunkDMesh - Live Map Demo</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow: hidden; background: #1a1a1a; }
+        #map { width: 100vw; height: 100vh; }
+        .leaflet-container { background: #222 !important; }
+
+        .coords-display {
+            background: rgba(0,0,0,0.7); color: #fff; padding: 8px 12px;
+            border-radius: 5px; font-size: 12px; font-family: monospace;
+        }
+        .coords-display a { color: #4ade80; }
+
+        .hover-overlay {
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%);
+            background: rgba(30,30,30,0.95); border: 2px solid #4CAF50;
+            border-radius: 10px; width: 90%; max-width: 380px; z-index: 2000;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.8); backdrop-filter: blur(5px);
+            display: none;
+        }
+        .hover-overlay.visible { display: block; }
+        .hover-header {
+            background: linear-gradient(135deg,#2d5016,#4CAF50); color: #fff;
+            padding: 12px 16px; border-radius: 8px 8px 0 0;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .hover-header h3 { font-size: 15px; }
+        .close-btn { background: none; border: none; color: #fff; font-size: 22px; cursor: pointer; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border-radius: 50%; }
+        .close-btn:hover { background: rgba(255,255,255,0.2); }
+        .hover-body { padding: 16px; color: #fff; }
+        .hover-section { margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+        .hover-section:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+        .hover-section label { display: block; font-size: 11px; color: #888; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .hover-value { font-family: monospace; font-size: 13px; color: #4ade80; word-break: break-all; }
+
+        .demo-banner {
+            position: fixed; top: 12px; left: 50%; transform: translateX(-50%);
+            background: rgba(0,0,0,0.85); border: 1px solid #444; border-radius: 6px;
+            padding: 8px 16px; color: #ccc; font-size: 12px; z-index: 3000;
+            font-family: monospace; text-align: center;
+        }
+        .demo-banner a { color: #4ade80; text-decoration: none; }
+
+        .legend {
+            background: rgba(0,0,0,0.75); border-radius: 6px; padding: 8px 12px;
+            color: #ccc; font-size: 11px; line-height: 1.6;
+        }
+        .legend strong { color: #4ade80; }
+
+        @media (max-width: 600px) {
+            .hover-overlay { width: 95%; max-width: 95vw; }
+            .coords-display { font-size: 10px; padding: 5px 8px; }
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+
+    <div class="demo-banner">
+        DEMO — Mock data &middot; <a href="index.html">Back to Dashboard</a> &middot; <a href="https://github.com/YoannDev90/ChunkDMesh" target="_blank">GitHub</a>
+    </div>
+
+    <div id="hover-overlay" class="hover-overlay">
+        <div class="hover-header">
+            <h3>Block Info</h3>
+            <button class="close-btn" id="close-hover">&times;</button>
+        </div>
+        <div class="hover-body">
+            <div class="hover-section">
+                <label>Coordinates</label>
+                <div class="hover-value" id="coord-value">--</div>
+            </div>
+            <div class="hover-section">
+                <label>Block</label>
+                <div class="hover-value" id="block-value">--</div>
+            </div>
+            <div class="hover-section">
+                <label>Biome</label>
+                <div class="hover-value" id="biome-value">--</div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+    // Mock Minecraft-like tile layer using Canvas
+    const CHUNK_SIZE = 16;
+    const TILE_SIZE = 256;
+
+    const MinecraftCRS = L.extend({}, L.CRS.Simple, {
+        scale: function(zoom) { return Math.pow(2, zoom - 1); },
+        transformation: new L.Transformation(1, 0, 1, 0)
+    });
+    const map = L.map('map', {
+        crs: MinecraftCRS,
+        minZoom: 0,
+        maxZoom: 5,
+        attributionControl: false,
+        zoomControl: false,
+    });
+
+    L.control.zoom({ position: 'topright' }).addTo(map);
+
+    // Mock tile layer — procedural Minecraft-like terrain
+    const mockTileLayer = L.TileLayer.extend({
+        createTile: function(coords, done) {
+            const canvas = document.createElement('canvas');
+            canvas.width = TILE_SIZE;
+            canvas.height = TILE_SIZE;
+            const ctx = canvas.getContext('2d');
+            const tileX = coords.x;
+            const tileY = coords.y;
+            const zoom = coords.z;
+
+            // Simple hash for deterministic noise
+            function hash(x, y) {
+                let h = (x * 374761393 + y * 668265263 + 1234567) & 0xffffffff;
+                h = (h ^ (h >> 13)) * 1274126177;
+                h = h ^ (h >> 16);
+                return (h & 0x7fffffff) / 0x7fffffff;
+            }
+
+            // Block colors (Minecraft-like)
+            const biomeColors = {
+                grass: ['#4a7c2e', '#5a8c3e', '#3a6c1e', '#4e8032'],
+                sand: ['#d4c486', '#c8b878', '#dcc890', '#d0bc82'],
+                water: ['#2a5fa8', '#3060a0', '#2858a0', '#2c5ca4'],
+                stone: ['#7a7a7a', '#808080', '#757575', '#7e7e7e'],
+                snow: ['#e8e8e8', '#f0f0f0', '#e0e0e0', '#eaeaea'],
+                dirt: ['#8b6b42', '#7a5c36', '#906e44', '#856840'],
+            };
+
+            const blockSize = Math.max(1, Math.floor(TILE_SIZE / (zoom + 1)));
+
+            for (let by = 0; by < TILE_SIZE; by += blockSize) {
+                for (let bx = 0; bx < TILE_SIZE; bx += blockSize) {
+                    const worldX = tileX * TILE_SIZE + bx;
+                    const worldY = tileY * TILE_SIZE + by;
+                    const n = hash(worldX, worldY);
+                    const n2 = hash(worldX * 3 + 1, worldY * 7 + 2);
+
+                    let colors;
+                    if (n < 0.3) colors = biomeColors.water;
+                    else if (n < 0.45) colors = biomeColors.sand;
+                    else if (n < 0.75) colors = biomeColors.grass;
+                    else if (n < 0.88) colors = biomeColors.dirt;
+                    else if (n < 0.96) colors = biomeColors.stone;
+                    else colors = biomeColors.snow;
+
+                    ctx.fillStyle = colors[Math.floor(n2 * colors.length)];
+                    ctx.fillRect(bx, by, blockSize - 1, blockSize - 1);
+                }
+            }
+
+            setTimeout(() => done(null, canvas), 10 + Math.random() * 30);
+            return canvas;
+        }
+    });
+
+    new mockTileLayer('', {
+        minZoom: 0,
+        maxZoom: 5,
+        tileSize: TILE_SIZE,
+        noWrap: true,
+    }).addTo(map);
+
+    // Coords display
+    const coordDiv = L.control({ position: 'topright' });
+    coordDiv.onAdd = function() {
+        const div = L.DomUtil.create('div', 'coords-display');
+        div.id = 'coords-display';
+        div.innerHTML = 'X: -- | Z: --';
+        return div;
+    };
+    coordDiv.addTo(map);
+
+    map.on('mousemove', function(e) {
+        const wz = Math.floor(e.latlng.lat);
+        const wx = Math.floor(e.latlng.lng);
+        document.getElementById('coords-display').innerHTML =
+            `X: <strong>${wx}</strong> | Z: <strong>${wz}</strong>`;
+    });
+
+    // Hover overlay with mock data
+    const overlay = document.getElementById('hover-overlay');
+    const blockNames = ['stone', 'dirt', 'grass_block', 'oak_log', 'water', 'sand', 'gravel', 'andesite', 'granite', 'diorite', 'iron_ore', 'coal_ore', 'copper_ore', 'deepslate', 'tuff'];
+    const biomeNames = ['plains', 'forest', 'desert', 'taiga', 'jungle', 'swamp', 'mountains', 'ocean', 'river', 'savanna', 'snowy_tundra', 'dark_forest', 'birch_forest', 'mushroom_fields', 'badlands'];
+
+    document.getElementById('close-hover').onclick = () => overlay.classList.remove('visible');
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') overlay.classList.remove('visible'); });
+
+    map.on('click', function(e) {
+        const wz = Math.floor(e.latlng.lat);
+        const wx = Math.floor(e.latlng.lng);
+        const cx = Math.floor(wx / CHUNK_SIZE);
+        const cz = Math.floor(wz / CHUNK_SIZE);
+        const lx = ((wx % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
+        const lz = ((wz % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
+        const y = Math.floor(Math.random() * 64) + 60;
+
+        // Deterministic block/biome from coords
+        const blockIdx = Math.abs((wx * 7 + wz * 13 + y * 3) % blockNames.length);
+        const biomeIdx = Math.abs((wx * 11 + wz * 17) % biomeNames.length);
+
+        document.getElementById('coord-value').textContent = `X: ${wx} | Y: ${y} | Z: ${wz}`;
+        document.getElementById('block-value').textContent = `${blockNames[blockIdx]} (h=${y})`;
+        document.getElementById('biome-value').textContent = biomeNames[biomeIdx];
+        overlay.classList.add('visible');
+    });
+
+    // Legend
+    const legend = L.control({ position: 'bottomright' });
+    legend.onAdd = function() {
+        const div = L.DomUtil.create('div', 'legend');
+        div.innerHTML = `<strong>ChunkDMesh Map</strong><br>Click any tile for block info<br>Mock terrain — no server`;
+        return div;
+    };
+    legend.addTo(map);
+
+    // Back button
+    const backBtn = L.control({ position: 'topleft' });
+    backBtn.onAdd = function() {
+        const btn = L.DomUtil.create('button', '');
+        btn.innerHTML = '← Dashboard';
+        btn.style.cssText = 'background:rgba(0,0,0,0.7);color:#aaa;border:1px solid #555;border-radius:4px;padding:4px 10px;font-size:11px;cursor:pointer;font-family:monospace;';
+        btn.onclick = function() { window.location.href = 'index.html'; };
+        return btn;
+    };
+    backBtn.addTo(map);
+
+    map.setView([0, 0], 3);
+    </script>
+</body>
+</html>
