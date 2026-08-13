@@ -1,6 +1,8 @@
 import datetime
 import logging
 import logging.config
+import os
+import sys
 from pathlib import Path
 
 import json5
@@ -36,6 +38,13 @@ class ColoredFormatter(logging.Formatter):
 _BASE_DIR = Path(__file__).resolve().parent
 
 
+def _log_base_dir() -> Path:
+    """Directory for logs: next to the executable when frozen, else server/."""
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return _BASE_DIR
+
+
 def load_logging_config(path=None):
     if path is None:
         path = str(_BASE_DIR / "config" / "logging_config.json5")
@@ -45,9 +54,13 @@ def load_logging_config(path=None):
 
 
 def setup_logging():
-    log_dir = _BASE_DIR / "logs"
+    log_dir = _log_base_dir() / "logs"
     log_dir.mkdir(exist_ok=True)
     logging.ColoredFormatter = ColoredFormatter
     logging_config = load_logging_config()
+    for handler in logging_config.get("handlers", {}).values():
+        filename = handler.get("filename")
+        if filename and not os.path.isabs(filename):
+            handler["filename"] = str(log_dir / Path(filename).name)
     logging.config.dictConfig(config=logging_config)
     return logging.getLogger(__name__)

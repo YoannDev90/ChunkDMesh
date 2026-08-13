@@ -3,9 +3,9 @@ import math
 import os
 import random
 import threading
-from pathlib import Path
 
 import json5
+from _paths import bundle_root
 
 
 class ChunkyShape(enum.Enum):
@@ -58,9 +58,7 @@ class Config:
 
     def __new__(cls, path: str | None = None):
         if path is None:
-            path = os.environ.get("CHUNKMESH_CONFIG_PATH") or str(
-                Path(__file__).resolve().parent.parent / "data" / "world_config.json5"
-            )
+            path = os.environ.get("CHUNKMESH_CONFIG_PATH") or str(bundle_root() / "data" / "world_config.json5")
         with _config_lock:
             if path in cls._instances:
                 return cls._instances[path]
@@ -71,13 +69,15 @@ class Config:
     def __init__(self, path: str | None = None):
         """Initialize Config singleton, load and normalize values from JSON5."""
         if path is None:
-            path = os.environ.get("CHUNKMESH_CONFIG_PATH") or str(
-                Path(__file__).resolve().parent.parent / "data" / "world_config.json5"
-            )
+            path = os.environ.get("CHUNKMESH_CONFIG_PATH") or str(bundle_root() / "data" / "world_config.json5")
         with _config_lock:
             if path in self._initialized:
                 return
             self._initialized.add(path)
+        self._load(path)
+
+    def _load(self, path: str) -> None:
+        """Load and normalize the world config from the given JSON5 file."""
         self.path = path
         self.config = load_config(path)
         self._validated = False
@@ -99,6 +99,19 @@ class Config:
         self.use_spawn_as_center: bool = False
 
         self._normalize_defaults()
+
+    def reload(self) -> None:
+        """Re-read the config file from disk and re-normalize all values."""
+        self._load(self.path)
+
+    def is_unconfigured(self) -> bool:
+        """True when the config still holds the NaN template placeholders.
+
+        The bundled world_config.json5 ships with NaN markers for the values
+        that must be filled in (version/loader/chunky). A config is considered
+        unconfigured until all four are provided.
+        """
+        return not any([self.minecraft_version, self.minecraft_loader, self.loader_version, self.chunky_version])
 
     @staticmethod
     def _clean_str(value) -> str | None:
@@ -200,7 +213,7 @@ class Config:
 
     def to_dict(self) -> dict:
         """Serialize config to dict for API responses."""
-        mods_zip_path = Path(__file__).resolve().parent.parent / "data" / "mods.zip"
+        mods_zip_path = bundle_root() / "data" / "mods.zip"
         return {
             "minecraft_version": self.minecraft_version,
             "minecraft_loader": self.minecraft_loader,

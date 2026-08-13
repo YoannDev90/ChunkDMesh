@@ -97,12 +97,27 @@ def _read_thread_count() -> int:
 
 
 def _clk_tck() -> int:
-    """Get system clock ticks per second."""
-    return os.sysconf(os.sysconf_names["SC_CLK_TCK"])
+    """Get system clock ticks per second. Falls back to 100 (Linux default) on Windows."""
+    if not hasattr(os, "sysconf"):
+        return 100
+    try:
+        return os.sysconf(os.sysconf_names["SC_CLK_TCK"])  # type: ignore[attr-defined]
+    except (ValueError, OSError, KeyError):
+        return 100
+
+
+def _page_size() -> int:
+    """Get system page size in bytes. Falls back to 4096 on Windows."""
+    if not hasattr(os, "sysconf"):
+        return 4096
+    try:
+        return os.sysconf(os.sysconf_names["SC_PAGE_SIZE"])  # type: ignore[attr-defined]
+    except (ValueError, OSError, KeyError):
+        return 4096
 
 
 CLK_TCK = _clk_tck()
-PAGE_SIZE = os.sysconf(os.sysconf_names["SC_PAGE_SIZE"])
+PAGE_SIZE = _page_size()
 
 
 def sample_process() -> dict:

@@ -1,5 +1,8 @@
+import os
 from dataclasses import dataclass
 from pathlib import Path
+
+from _paths import bundle_root
 
 
 @dataclass
@@ -35,12 +38,13 @@ class MapConfig:
     @classmethod
     def from_flat_regions_dir(cls, regions_dir: str) -> "MapConfig":
         """Create MapConfig from flat regions directory path."""
-        base = Path(__file__).resolve().parent.parent.parent
+        base = bundle_root()
         data_dir = base / "data"
+        rust_name = "mcmap.exe" if os.name == "nt" else "mcmap"
         return cls(
             region_dir=regions_dir,
             tile_cache_dir=str(data_dir / ".map_cache"),
-            rust_binary=str(base / "tiler" / "target" / "release" / "mcmap"),
+            rust_binary=str(base / "tiler" / "target" / "release" / rust_name),
             palette_path=str(data_dir / "block_colors.json"),
             biome_colors_path=str(data_dir / "biome_colors.json"),
             biome_tints_path=str(data_dir / "biome_tint_blocks.json"),

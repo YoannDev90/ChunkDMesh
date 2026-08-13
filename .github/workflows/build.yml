@@ -1,0 +1,80 @@
+name: Build executables
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'server/**'
+      - 'client/**'
+      - 'packaging/**'
+      - 'tiler/**'
+      - 'pyproject.toml'
+      - 'requirements.txt'
+      - '.github/workflows/build.yml'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact: linux-x86_64
+          - os: macos-14
+            artifact: macos-arm64
+          - os: windows-latest
+            artifact: windows-x86_64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            tiler/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('tiler/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Build Rust tiler (bundled into server)
+        shell: bash
+        run: cargo build --release --manifest-path tiler/Cargo.toml
+
+      - name: Install dependencies
+        shell: bash
+        run: uv sync --extra dev
+
+      - name: Build server executable (PyInstaller)
+        shell: bash
+        run: uv run pyinstaller packaging/server.spec --clean --noconfirm
+
+      - name: Build client executable (PyInstaller)
+        shell: bash
+        run: uv run pyinstaller packaging/client.spec --clean --noconfirm
+
+      - name: Package archives
+        shell: bash
+        run: |
+          cd dist
+          uv run python -m zipfile -c "../chunkdmesh-server-${{ matrix.artifact }}.zip" chunkdmesh-server
+          uv run python -m zipfile -c "../chunkdmesh-client-${{ matrix.artifact }}.zip" chunkdmesh-client
+          cd ..
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: chunkdmesh-${{ matrix.artifact }}
+          path: |
+            chunkdmesh-server-${{ matrix.artifact }}.zip
+            chunkdmesh-client-${{ matrix.artifact }}.zip
